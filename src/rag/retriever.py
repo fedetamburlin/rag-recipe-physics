@@ -275,20 +275,22 @@ class RAGRetriever:
             return f"Error: {e}"
     
     def calculate_recipe_nutrition(self, generated_text: str) -> dict:
-        """Parse ingredients from generated recipe and calculate nutrition."""
+        """Parse ingredients from generated recipe and calculate nutrition scaled by percentage."""
         import re
         
-        ingredients = []
+        # Parse ingredient names with percentages
+        ingredient_data = []  # list of (name, percentage)
         
         text = generated_text.replace('\n', ' ').replace('**', '')
         
         matches = re.findall(r'([a-zA-Z\s]+?)\s+(\d+)%', text)
         for name, pct in matches:
             ing = name.strip()
-            if ing and len(ing) > 1:
-                ingredients.append(ing)
+            pct_int = int(pct)
+            if ing and len(ing) > 1 and pct_int > 0:
+                ingredient_data.append((ing, pct_int / 100.0))  # Convert to decimal
         
-        if not ingredients:
+        if not ingredient_data:
             return {}
         
         try:
@@ -308,11 +310,35 @@ class RAGRetriever:
             nc = importlib.util.module_from_spec(spec2)
             spec2.loader.exec_module(nc)
             
-            matcher = ik.IngredientMatcher()
-            matched = matcher.match_ingredients(ingredients)
-            result = nc.calculate_recipe_nutrients(ingredients, matched)
+            # Get nutrition calculator
+            calc = nc.NutritionCalculator()
             
-            return result
+            # Calculate scaled nutrition for each ingredient
+            scaled_nutrition = {}
+            
+            for ing_name, percentage in ingredient_data:
+                matches = ik.IngredientMatcher().match(ing_name)
+                if not matches:
+                    continue
+                
+                fdc_id = matches[0]['fdc_id']
+                nutrients = calc.get_food_nutrients(fdc_id)
+                
+                for nut_name, data in nutrients.items():
+                    if data['amount'] is None:
+                        continue
+                    
+                    # Scale by percentage
+                    scaled_value = data['amount'] * percentage
+                    
+                    if nut_name not in scaled_nutrition:
+                        scaled_nutrition[nut_name] = {'unit': data['unit'], 'amount': 0}
+                    
+                    scaled_nutrition[nut_name]['amount'] += scaled_value
+            
+            # Get summary with mapped nutrients
+            return calc.get_summary(scaled_nutrition)
+            
         except Exception as e:
             import traceback
             print(f"[Nutrition Error: {e}]")
