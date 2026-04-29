@@ -227,15 +227,10 @@ class RAGRetriever:
         )
         
         system_prompt = (
-            "You are a cooking assistant. Generate exactly one recipe.\n"
-            "Rules:\n"
-            "- Draw inspiration from context recipes;\n"
-            "- NEVER use forbidden ingredients;\n"
-            "- Output MUST be in English;\n"
-            "- Do NOT add notes, greetings;\n\n"
-            "OUTPUT FORMAT:\n"
-            "**Title:** <max 5 words>\n"
-            "**Ingredients:** list ONLY 5 ingredients with percentage. Use format: INGREDIENT_NAME PERCENTAGE%. Percentages must sum to 100%. Example: flour 30%, cocoa 25%, sugar 20%, banana 15%, oil 10%"
+            "Generate a recipe. Output ONLY exactly this format with percentages:\n\n"
+            "INGREDIENTS: flour 30%, sugar 25%, butter 20%, egg 15%, milk 10%\n"
+            "TITLE: Recipe Name\n\n"
+            "Replace with your recipe. Use exactly 5 ingredients. Percentages MUST sum to 100."
         )
         
         user_prompt = f"Context:\n\n{context}\n\n"
@@ -278,17 +273,28 @@ class RAGRetriever:
         """Parse ingredients from generated recipe and calculate nutrition scaled by percentage."""
         import re
         
-        # Parse ingredient names with percentages
+# Parse ingredient names with percentages
         ingredient_data = []  # list of (name, percentage)
         
+        # Handle both formats: "INGREDIENTS:" and "**Ingredients:**"
         text = generated_text.replace('\n', ' ').replace('**', '')
+        text = re.sub(r'INGREDIENTS:?\s*', '', text, flags=re.I)
+        text = re.sub(r'TITLE:.*', '', text, flags=re.I)
         
         matches = re.findall(r'([a-zA-Z\s]+?)\s+(\d+)%', text)
+        
+        total_pct = 0
         for name, pct in matches:
-            ing = name.strip()
             pct_int = int(pct)
-            if ing and len(ing) > 1 and pct_int > 0:
-                ingredient_data.append((ing, pct_int / 100.0))  # Convert to decimal
+            ing = name.strip().lower()
+            # Filter out zero-percent items and very short names
+            if pct_int > 0 and len(ing) > 2:
+                ingredient_data.append((ing, pct_int / 100.0))
+                total_pct += pct_int
+        
+        # Warn if percentages don't sum to ~100
+        if total_pct > 0 and abs(total_pct - 100) > 5:
+            print(f"[Warning] Percentages sum to {total_pct}%, not 100%")
         
         if not ingredient_data:
             return {}
