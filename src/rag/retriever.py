@@ -221,16 +221,17 @@ class RAGRetriever:
         
         avg_ing = sum(len(r.ingredients.split(',')) for r in retrieved) // len(retrieved)
         
-        context = "\n\n".join(
-            f"[RECIPE {r.rank}] Title: {r.title}\nIngredients: {r.ingredients}\nInstructions: {r.instructions}"
+        context = "\n".join(
+            f"- {r.title}: {r.ingredients[:100]}"
             for r in retrieved
         )
         
         system_prompt = (
-            "Output ONLY these two lines, nothing else:\n"
-            "INGREDIENTS: ingredient1 20%, ingredient2 20%, ingredient3 20%, ingredient4 20%, ingredient5 20%\n"
+            "Generate a recipe. Output ONLY exactly this format with percentages:\n\n"
+            "INGREDIENTS: flour 30%, sugar 25%, butter 20%, egg 15%, milk 10%\n"
             "TITLE: Recipe Name\n\n"
-            "Replace ingredients with your recipe. Salt MUST be 1%. Total must equal 100%. NO other text."
+            "Replace with your recipe. Use exactly 5 ingredients. Percentages MUST sum to 100%.\n"
+            "IMPORTANT: Salt MUST be 1% or less. Other ingredients fill the rest."
         )
         
         user_prompt = f"Context:\n\n{context}\n\n"
