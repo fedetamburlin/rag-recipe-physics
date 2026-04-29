@@ -1,0 +1,141 @@
+"""Ingredient matching with USDA database."""
+
+import sqlite3
+from pathlib import Path
+from typing import Optional
+
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "usda_nutrients.db"
+
+DEFAULT_TOP_K = 3
+MIN_SCORE = 0.3
+
+
+def get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def normalize(text: str) -> str:
+    return text.lower().strip()
+
+
+class IngredientMatcher:
+    """Match ingredients to USDA foods."""
+    
+    def __init__(self, top_k: int = DEFAULT_TOP_K):
+        self.top_k = top_k
+        self._cache = {}
+    
+    def search_by_name(self, query: str, limit: int = 50):
+        """Search foods by name with priority: exact > starts with > contains."""
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        q = normalize(query)
+        
+        cursor.execute("""
+            SELECT fdc_id, description, data_type,
+                   CASE 
+                       WHEN LOWER(description) = ? THEN 0
+                       WHEN LOWER(description) LIKE ? THEN 1
+                       WHEN LOWER(description) LIKE ? THEN 2
+                       ELSE 3
+                   END as priority
+            FROM foods
+            WHERE LOWER(description) LIKE ?
+            ORDER BY priority, LENGTH(description)
+            LIMIT ?
+        """, (q, f"{q}%", f"% {q}%", f"%{q}%", limit))
+        
+        results = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return results
+    
+    def search_fuzzy(self, query: str, limit: int = 100) -> list[dict]:
+        """Fallback fuzzy search."""
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT fdc_id, description, data_type
+            FROM foods
+            WHERE LOWER(description) LIKE ?
+            LIMIT ?
+        """, (f"%{normalize(query[:5])}%", limit))
+        
+        candidates = cursor.fetchall()
+        conn.close()
+        
+        scored = []
+        for row in candidates:
+            similarity = self._similarity(query, row['description'])
+            if similarity >= 0.4:
+                scored.append((similarity, dict(row)))
+        
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in scored[:self.top_k]]
+    
+    def _similarity(self, a: str, b: str) -> float:
+        a_norm = normalize(a)
+        b_norm = normalize(b)
+        
+        if a_norm in b_norm:
+            return 0.9
+        if b_norm in a_norm:
+            return 0.8
+        
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, a_norm, b_norm).ratio()
+    
+    def match(self, ingredient: str) -> list[dict]:
+        if ingredient in self._cache:
+            return self._cache[ingredient]
+        
+        results = self.search_by_name(ingredient)
+        
+        if not results:
+            results = self.search_fuzzy(ingredient)
+        
+        self._cache[ingredient] = results[:self.top_k]
+        return self._cache[ingredient]
+    
+    def match_ingredients(self, ingredients: list[str]) -> dict[str, list[dict]]:
+        results = {}
+        for ing in ingredients:
+            matches = self.match(ing)
+            if matches:
+                results[ing] = matches
+        return results
+    
+    def clear_cache(self):
+        self._cache.clear()
+
+
+def get_food_nutrients(fdc_id: int) -> list[dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT n.name, n.unit_name, fn.amount
+        FROM food_nutrients fn
+        JOIN nutrients n ON fn.nutrient_id = n.id
+        WHERE fn.fdc_id = ?
+    """, (fdc_id,))
+    
+    results = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return results
+
+
+if __name__ == "__main__":
+    matcher = IngredientMatcher()
+    
+    test_ingredients = ["butter", "flour", "sugar", "egg", "milk", "chocolate"]
+    
+    print("Testing ingredient matching...")
+    for ing in test_ingredients:
+        matches = matcher.match(ing)
+        print(f"\n{ing}:")
+        for m in matches[:3]:
+            print(f"  - {m['description']} (fdc_id={m['fdc_id']})")

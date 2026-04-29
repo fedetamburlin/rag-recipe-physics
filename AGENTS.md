@@ -53,3 +53,28 @@ Query → QueryAnalyzer (parser/query_analyzer.py)
 ## Cache
 
 Embeddings and metadata cached in `cache/rag/recipes_*`. Delete cache to re-download dataset.
+
+## Nutrition Database (Separate Module)
+
+### Database Setup
+```bash
+# Ingest USDA data into SQLite
+python scripts/ingest_usda.py
+```
+
+### Usage
+```python
+from src.nutrition.ingredient_lookup import IngredientMatcher
+from src.nutrition.nutrition_calculator import calculate_recipe_nutrients
+
+# Match ingredients to USDA foods
+matcher = IngredientMatcher()
+matched = matcher.match_ingredients(['butter', 'flour', 'sugar'])
+
+# Calculate nutrition totals
+result = calculate_recipe_nutrients(['butter', 'flour', 'sugar'], matched)
+# Returns: {Energy: {amount: X, unit: KCAL}, Protein: ..., ...}
+```
+
+### Database Location
+- SQLite: `data/usda_nutrients.db` (85k foods, 477 nutrients, 800k+ nutrient links)
