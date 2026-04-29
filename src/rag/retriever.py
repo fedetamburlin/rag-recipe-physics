@@ -227,10 +227,10 @@ class RAGRetriever:
         )
         
         system_prompt = (
-            "Generate a recipe. Output ONLY exactly this format with percentages:\n\n"
-            "INGREDIENTS: flour 30%, sugar 25%, butter 20%, egg 15%, milk 10%\n"
+            "Output ONLY these two lines, nothing else:\n"
+            "INGREDIENTS: ingredient1 20%, ingredient2 20%, ingredient3 20%, ingredient4 20%, ingredient5 20%\n"
             "TITLE: Recipe Name\n\n"
-            "Replace with your recipe. Use exactly 5 ingredients. Percentages MUST sum to 100."
+            "Replace ingredients with your recipe. Salt MUST be 1%. Total must equal 100%. NO other text."
         )
         
         user_prompt = f"Context:\n\n{context}\n\n"
@@ -273,28 +273,53 @@ class RAGRetriever:
         """Parse ingredients from generated recipe and calculate nutrition scaled by percentage."""
         import re
         
-# Parse ingredient names with percentages
-        ingredient_data = []  # list of (name, percentage)
+        # Robust parsing - find ANY ingredient + percentage pattern
+        ingredient_data = []
         
-        # Handle both formats: "INGREDIENTS:" and "**Ingredients:**"
+        # Clean text
         text = generated_text.replace('\n', ' ').replace('**', '')
-        text = re.sub(r'INGREDIENTS:?\s*', '', text, flags=re.I)
         text = re.sub(r'TITLE:.*', '', text, flags=re.I)
         
-        matches = re.findall(r'([a-zA-Z\s]+?)\s+(\d+)%', text)
+        # Find all patterns like "ingredient 30%" or "30% ingredient" or "ingredient - 30%"
+        # Pattern 1: "name XX%"
+        matches1 = re.findall(r'([a-zA-Z\s\-]+?)\s+(\d+)%', text)
+        # Pattern 2: "XX% name"
+        matches2 = re.findall(r'(\d+)%\s+([a-zA-Z\s\-]+?)(?:\s|$|,|\.)', text)
         
-        total_pct = 0
-        for name, pct in matches:
-            pct_int = int(pct)
-            ing = name.strip().lower()
-            # Filter out zero-percent items and very short names
-            if pct_int > 0 and len(ing) > 2:
-                ingredient_data.append((ing, pct_int / 100.0))
-                total_pct += pct_int
+        all_matches = []
+        for name, pct in matches1:
+            all_matches.append((name.strip(), int(pct)))
+        for pct, name in matches2:
+            all_matches.append((name.strip(), int(pct)))
         
-        # Warn if percentages don't sum to ~100
-        if total_pct > 0 and abs(total_pct - 100) > 5:
-            print(f"[Warning] Percentages sum to {total_pct}%, not 100%")
+        # Clip salt to max 1%
+        salt_adjustment = 0
+        normalized = []
+        for name, pct in all_matches:
+            if 'salt' in name.lower() and pct > 1:
+                salt_adjustment = pct - 1
+                pct = 1
+            if pct > 0 and len(name) > 2:
+                normalized.append((name.lower(), pct))
+        
+        # Redistribute excess from salt if any
+        if salt_adjustment > 0 and len(normalized) > 1:
+            excess = salt_adjustment / 100.0
+            redistribute = excess / (len(normalized) - 1)
+            new_data = []
+            for name, pct in normalized:
+                if 'salt' not in name:
+                    new_data.append((name, pct/100.0 + redistribute))
+                else:
+                    new_data.append((name, pct/100.0))
+            normalized = new_data
+        else:
+            normalized = [(n, p/100.0) for n, p in normalized]
+        
+        ingredient_data = normalized
+        
+        if not ingredient_data:
+            return {}
         
         if not ingredient_data:
             return {}
