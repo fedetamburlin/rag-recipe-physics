@@ -235,10 +235,7 @@ class RAGRetriever:
             "- Do NOT add notes, greetings;\n\n"
             "OUTPUT FORMAT:\n"
             "**Title:** <max 5 words>\n"
-            "**Ingredients:** <comma-separated list>\n"
-            "**Instructions:**\n"
-            "1. <step>\n"
-            "2. <step>"
+            "**Ingredients:** list ONLY 5 ingredients with percentage. Use format: INGREDIENT_NAME PERCENTAGE%. Percentages must sum to 100%. Example: flour 30%, cocoa 25%, sugar 20%, banana 15%, oil 10%"
         )
         
         user_prompt = f"Context:\n\n{context}\n\n"
@@ -276,3 +273,48 @@ class RAGRetriever:
         except Exception as e:
             print(f"[Generation Error: {e}]")
             return f"Error: {e}"
+    
+    def calculate_recipe_nutrition(self, generated_text: str) -> dict:
+        """Parse ingredients from generated recipe and calculate nutrition."""
+        import re
+        
+        ingredients = []
+        
+        text = generated_text.replace('\n', ' ').replace('**', '')
+        
+        matches = re.findall(r'([a-zA-Z\s]+?)\s+(\d+)%', text)
+        for name, pct in matches:
+            ing = name.strip()
+            if ing and len(ing) > 1:
+                ingredients.append(ing)
+        
+        if not ingredients:
+            return {}
+        
+        try:
+            from pathlib import Path
+            import importlib.util
+            
+            project_root = Path(__file__).parent.parent
+            nutrition_path = project_root / "nutrition"
+            
+            spec = importlib.util.spec_from_file_location("ingredient_lookup", 
+                          nutrition_path / "ingredient_lookup.py")
+            ik = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ik)
+            
+            spec2 = importlib.util.spec_from_file_location("nutrition_calculator",
+                          nutrition_path / "nutrition_calculator.py")
+            nc = importlib.util.module_from_spec(spec2)
+            spec2.loader.exec_module(nc)
+            
+            matcher = ik.IngredientMatcher()
+            matched = matcher.match_ingredients(ingredients)
+            result = nc.calculate_recipe_nutrients(ingredients, matched)
+            
+            return result
+        except Exception as e:
+            import traceback
+            print(f"[Nutrition Error: {e}]")
+            traceback.print_exc()
+            return {}

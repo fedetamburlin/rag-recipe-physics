@@ -131,7 +131,13 @@ class NutritionCalculator:
 
 def calculate_recipe_nutrients(ingredients: list[str], matched_foods: dict) -> dict:
     """Main entry point for calculating recipe nutrition."""
-    from src.nutrition.ingredient_lookup import IngredientMatcher
+    try:
+        from src.nutrition.ingredient_lookup import IngredientMatcher
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent))
+        from ingredient_lookup import IngredientMatcher
     
     matcher = IngredientMatcher()
     
@@ -140,6 +146,19 @@ def calculate_recipe_nutrients(ingredients: list[str], matched_foods: dict) -> d
     
     calculator = NutritionCalculator()
     nutrition = calculator.calculate_from_matched(matched_foods)
+    
+    return calculator.get_summary(nutrition)
+
+
+def _standalone_calculate(ingredients: list[str]) -> dict:
+    """Standalone calculation without src imports."""
+    from src.nutrition.ingredient_lookup import IngredientMatcher
+    
+    matcher = IngredientMatcher()
+    matched = matcher.match_ingredients(ingredients)
+    
+    calculator = NutritionCalculator()
+    nutrition = calculator.calculate_from_matched(matched)
     
     return calculator.get_summary(nutrition)
 

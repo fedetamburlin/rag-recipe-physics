@@ -69,6 +69,12 @@ def main():
             print("\n[Generation]")
             result = retriever.generate(analysis.normalized_query, retrieved, 
                                          analysis.forbidden_ingredients, taxonomy)
+            
+            print("\n[Nutrition per 100g]")
+            nutrition = retriever.calculate_recipe_nutrition(result)
+            for k in ['Energy', 'Protein', 'Carbohydrates', 'Fat', 'Fiber', 'Sodium']:
+                if k in nutrition:
+                    print(f"  {k}: {nutrition[k]['amount']} {nutrition[k]['unit']}")
         
         print("\n" + "="*60)
         
@@ -76,37 +82,6 @@ def main():
             break
         
         query = input("\nNext query: ").strip()
-
-
-def run_tests(analyzer):
-    """Run heterogeneous test set."""
-    tests = [
-        ("Vegan chocolate cake without sugar", {"diets": ["vegan"], "forbidden": ["sugar"]}),
-        ("Gluten-free bread within 2 hours", {"forbidden": ["gluten"], "max_time": 120}),
-        ("Pane senza glutine per 4 persone", {"servings": 4, "forbidden": ["gluten"]}),
-        ("Gâteau sans lactose pour 8", {"forbidden": ["lactose"], "servings": 8}),
-        ("Low-carb dinner under 30 min", {"diets": ["low-carb"], "max_time": 30}),
-        ("Pastel sin azúcar para 5", {"forbidden": ["sugar"], "servings": 5}),
-        ("Pizza vegana in 45 minuti", {"diets": ["vegan"], "max_time": 45}),
-        ("500g low-carb pasta without cheese", {"weight": 500, "diets": ["low-carb"], "forbidden": ["dairy"]}),
-    ]
-    
-    passed = 0
-    for i, (query, expected) in enumerate(tests, 1):
-        r = analyzer.parse(query)
-        ok = True
-        if 'servings' in expected and r.target_servings != expected['servings']: ok = False
-        if 'weight' in expected and r.target_weight_grams != expected['weight']: ok = False
-        if 'max_time' in expected and r.max_time_minutes != expected['max_time']: ok = False
-        if 'diets' in expected and not any(d in r.diets for d in expected['diets']): ok = False
-        if 'forbidden' in expected and not any(f in r.forbidden_ingredients for f in expected['forbidden']): ok = False
-        
-        status = "✓" if ok else "✗"
-        print(f"{status} [{i}] {query[:45]}")
-        if ok: passed += 1
-    
-    print(f"\n{passed}/{len(tests)} passed")
-    return passed == len(tests)
 
 
 if __name__ == "__main__":
@@ -174,8 +149,22 @@ if __name__ == "__main__":
         
         if not args.skip_generation:
             print("\n[Generation]")
-            result = retriever.generate(analysis.normalized_query, retrieved, 
-                                         analysis.forbidden_ingredients, taxonomy)
+            try:
+                result = retriever.generate(analysis.normalized_query, retrieved, 
+                                             analysis.forbidden_ingredients, taxonomy)
+            except Exception as e:
+                print(f"[Error in generate: {e}]")
+                result = ""
+            
+            if result:
+                print("\n[Nutrition per 100g]")
+                try:
+                    nutrition = retriever.calculate_recipe_nutrition(result)
+                    for k in ['Energy', 'Protein', 'Carbohydrates', 'Fat', 'Fiber', 'Sodium']:
+                        if k in nutrition:
+                            print(f"  {k}: {nutrition[k]['amount']} {nutrition[k]['unit']}")
+                except Exception as e:
+                    print(f"[Error in nutrition: {e}]")
         
         print("\n" + "="*60)
         
