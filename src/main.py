@@ -74,7 +74,8 @@ def main():
             nutrition = retriever.calculate_recipe_nutrition(result)
             for k in ['Energy', 'Protein', 'Carbohydrates', 'Fat', 'Fiber', 'Sodium']:
                 if k in nutrition:
-                    print(f"  {k}: {nutrition[k]['amount']} {nutrition[k]['unit']}")
+                    unit = nutrition[k].get('unit', 'g')
+                    print(f"  {k}: {nutrition[k]['amount']} {unit}")
         
         print("\n" + "="*60)
         
