@@ -9,6 +9,64 @@ DB_PATH = Path(__file__).parent.parent.parent / "data" / "usda_nutrients.db"
 DEFAULT_TOP_K = 3
 MIN_SCORE = 0.3
 
+# Priority list: preferred matches for common ingredients (flexible matching)
+INGREDIENT_PRIORITY = {
+    'egg': [
+        'egg, whole', 'eggs, whole', 'egg whole', 'eggs',
+    ],
+    'sugar': [
+        'sugars, granulated', 'sugars, brown', 'sugars, powdered',
+    ],
+    'sugar': [
+        'sugar, white', 'sugar, granulated', 'sugar, brown',
+        'sugar, powdered', 'sugar, raw', 'sugars, granulated',
+        'sugars, brown', 'sugars, white'
+    ],
+    'milk': [
+        'milk, whole', 'milk, 2%', 'milk, 1%', 'milk, skim',
+        'milk, whole, 3.25%', 'milk, nonfat', 'milk, lowfat'
+    ],
+    'butter': [
+        'butter, salted', 'butter, unsalted', 'butter, without salt',
+        'butter, light'
+    ],
+    'flour': [
+        'flour, all-purpose', 'flour, white', 'flour, whole wheat',
+        'flour, 00', 'flour, self-rising'
+    ],
+    'chocolate': [
+        'chocolate, dark', 'chocolate, semisweet', 'chocolate, bittersweet',
+        'cocoa powder', 'chocolate, baking'
+    ],
+    'cream': [
+        'cream, heavy', 'cream, whipping', 'cream, half and half',
+        'cream, light', 'cream, heavy whipping'
+    ],
+    'cheese': [
+        'cheese, cheddar', 'cheese, mozzarella', 'cheese, parmesan',
+        'cheese, swiss', 'cheese, american'
+    ],
+    'oil': [
+        'oil, olive', 'oil, vegetable', 'oil, canola', 'oil, coconut',
+        'oil, sunflower', 'oil, soybean'
+    ],
+    'salt': [
+        'salt, table', 'salt, sea', 'salt, kosher', 'salt, iodized'
+    ],
+    'honey': [
+        'honey, raw', 'honey, clover', 'honey, organic', 'honey, pure'
+    ],
+}
+
+# Blacklist: patterns to exclude from fallback results
+EXCLUDE_PATTERNS = {
+    'egg': ['eggnog', 'meringue', 'custard', 'mayonnaise', 'quiche'],
+    'milk': ['buttermilk', 'milk chocolate', 'evaporated', 'condensed', 'butter'],
+    'sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial'],
+    'butter': ['butterbur', 'butterfly', 'nut', 'seed'],
+    'chocolate': ['ice cream', 'candy', 'spread', 'pudding', 'cereal'],
+}
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -18,6 +76,12 @@ def get_connection() -> sqlite3.Connection:
 
 def normalize(text: str) -> str:
     return text.lower().strip()
+
+
+def _matches_exclude(description: str, exclude_list: list[str]) -> bool:
+    """Check if description matches any exclude pattern."""
+    desc_lower = description.lower()
+    return any(pat in desc_lower for pat in exclude_list)
 
 
 class IngredientMatcher:
@@ -52,10 +116,48 @@ class IngredientMatcher:
         conn.close()
         return results
     
-    def search_fuzzy(self, query: str, limit: int = 100) -> list[dict]:
-        """Fallback fuzzy search."""
+    def search_priority(self, ingredient: str) -> list[dict]:
+        """Try priority list matches first."""
+        ing_lower = ingredient.lower()
+        
+        if ing_lower not in INGREDIENT_PRIORITY:
+            return []
+        
         conn = get_connection()
         cursor = conn.cursor()
+        
+        preferred = INGREDIENT_PRIORITY[ing_lower]
+        
+        # Build query with OR for each preferred term
+        conditions = []
+        params = []
+        for term in preferred:
+            conditions.append("LOWER(description) LIKE ?")
+            params.append(f"%{term}%")
+        
+        query = f"""
+            SELECT fdc_id, description, data_type
+            FROM foods
+            WHERE {' OR '.join(conditions)}
+            ORDER BY LENGTH(description)
+            LIMIT 5
+        """
+        
+        cursor.execute(query, params)
+        results = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # Filter out brand-specific results
+        filtered = [r for r in results if 'brand' not in r['description'].lower()]
+        
+        return filtered[:self.top_k] if filtered else results[:self.top_k]
+    
+    def search_fuzzy(self, query: str, limit: int = 100) -> list[dict]:
+        """Fallback fuzzy search with blacklist filtering."""
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        exclude_list = EXCLUDE_PATTERNS.get(query.lower(), [])
         
         cursor.execute("""
             SELECT fdc_id, description, data_type
@@ -69,8 +171,12 @@ class IngredientMatcher:
         
         scored = []
         for row in candidates:
-            similarity = self._similarity(query, row['description'])
-            if similarity >= 0.4:
+            desc = row['description']
+            if exclude_list and _matches_exclude(desc, exclude_list):
+                continue
+            
+            similarity = self._similarity(query, desc)
+            if similarity >= 0.35:
                 scored.append((similarity, dict(row)))
         
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -92,8 +198,14 @@ class IngredientMatcher:
         if ingredient in self._cache:
             return self._cache[ingredient]
         
-        results = self.search_by_name(ingredient)
+        # 1. Try priority list first
+        results = self.search_priority(ingredient)
         
+        # 2. Fallback to search by name
+        if not results:
+            results = self.search_by_name(ingredient)
+        
+        # 3. Final fallback to fuzzy
         if not results:
             results = self.search_fuzzy(ingredient)
         
