@@ -7,12 +7,12 @@ from typing import Optional
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "usda_nutrients.db"
 
 NUTRIENT_MAP = {
-    'Energy': ['Energy (Atwater General Factors)', 'Energy (Atwater Specific Factors)', 'Energy'],
-    'Protein': ['Protein', 'Protein (N x 6.25)'],
+    'Energy': ['Energy'],
+    'Protein': ['Protein'],
     'Carbohydrates': ['Carbohydrate, by difference', 'Carbohydrate, total'],
     'Fat': ['Total lipid (fat)', 'Total fat (NLEA)'],
-    'Fiber': ['Fiber, total dietary', 'Fiber, crude (DO NOT USE - Archived)'],
-    'Sugar': ['Sugars, total', 'Sugars, total (NLEA)'],
+    'Fiber': ['Fiber, total dietary'],
+    'Sugar': ['Total Sugars', 'Sugars, total'],
     'Sodium': ['Sodium, Na'],
     'Cholesterol': ['Cholesterol'],
     'Saturated Fat': ['Fatty acids, total saturated'],
@@ -64,17 +64,29 @@ class NutritionCalculator:
         conn = get_connection()
         cursor = conn.cursor()
         
+        # Prefer KCAL for energy, otherwise use whatever is available
         cursor.execute("""
             SELECT n.name, n.unit_name, fn.amount
             FROM food_nutrients fn
             JOIN nutrients n ON fn.nutrient_id = n.id
             WHERE fn.fdc_id = ?
+            ORDER BY CASE 
+                WHEN n.unit_name = 'KCAL' THEN 0 
+                WHEN n.unit_name = 'G' THEN 1
+                WHEN n.unit_name = 'MG' THEN 2
+                ELSE 3
+            END
         """, (fdc_id,))
         
-        results = {row['name']: {'unit': row['unit_name'], 'amount': row['amount']} 
-                   for row in cursor.fetchall()}
+        # Deduplicate by name - keep first (which is prioritized above)
+        seen = {}
+        for row in cursor.fetchall():
+            name = row['name']
+            if name not in seen:
+                seen[name] = {'unit': row['unit_name'], 'amount': row['amount']}
+        
         conn.close()
-        return results
+        return seen
     
     def calculate_from_fdc_ids(self, fdc_ids: list[int]) -> dict:
         aggregated = {}
