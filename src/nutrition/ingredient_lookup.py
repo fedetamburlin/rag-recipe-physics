@@ -11,60 +11,55 @@ MIN_SCORE = 0.3
 
 # Priority list: preferred matches for common ingredients (flexible matching)
 INGREDIENT_PRIORITY = {
-    'egg': [
-        'egg, whole', 'eggs, whole', 'egg whole', 'eggs',
-    ],
-    'sugar': [
-        'sugars, granulated', 'sugars, brown', 'sugars, powdered',
-    ],
-    'sugar': [
-        'sugar, white', 'sugar, granulated', 'sugar, brown',
-        'sugar, powdered', 'sugar, raw', 'sugars, granulated',
-        'sugars, brown', 'sugars, white'
-    ],
-    'milk': [
-        'milk, whole', 'milk, 2%', 'milk, 1%', 'milk, skim',
-        'milk, whole, 3.25%', 'milk, nonfat', 'milk, lowfat'
-    ],
-    'butter': [
-        'butter, salted', 'butter, unsalted', 'butter, without salt',
-        'butter, light'
-    ],
-    'flour': [
-        'flour, all-purpose', 'flour, white', 'flour, whole wheat',
-        'flour, 00', 'flour, self-rising'
-    ],
-    'chocolate': [
-        'chocolate, dark', 'chocolate, semisweet', 'chocolate, bittersweet',
-        'cocoa powder', 'chocolate, baking'
-    ],
-    'cream': [
-        'cream, heavy', 'cream, whipping', 'cream, half and half',
-        'cream, light', 'cream, heavy whipping'
-    ],
-    'cheese': [
-        'cheese, cheddar', 'cheese, mozzarella', 'cheese, parmesan',
-        'cheese, swiss', 'cheese, american'
-    ],
-    'oil': [
-        'oil, olive', 'oil, vegetable', 'oil, canola', 'oil, coconut',
-        'oil, sunflower', 'oil, soybean'
-    ],
-    'salt': [
-        'salt, table', 'salt, sea', 'salt, kosher', 'salt, iodized'
-    ],
-    'honey': [
-        'honey, raw', 'honey, clover', 'honey, organic', 'honey, pure'
-    ],
+    'egg': ['egg, whole', 'eggs, whole', 'egg whole', 'eggs'],
+    'sugar': ['sugars, granulated', 'sugars, brown', 'sugars, powdered'],
+    'milk': ['milk, whole', 'milk, 2%', 'milk, 1%', 'milk, skim'],
+    'butter': ['butter, salted', 'butter, unsalted'],
+    'flour': ['flour, all-purpose', 'flour, white', 'flour, whole wheat', 'flour, 00'],
+    'chocolate': ['chocolate, dark', 'chocolate, semisweet', 'cocoa powder'],
+    'cream': ['cream, heavy', 'cream, whipping', 'cream, half and half'],
+    'cheese': ['cheese, cheddar', 'cheese, mozzarella', 'cheese, parmesan'],
+    'oil': ['olive oil', 'oil, olive', 'oil, vegetable', 'oil, canola'],
+    'salt': ['salt, table', 'salt, sea'],
+    'honey': ['honey, raw', 'honey, clover'],
+    # New additions
+    'garlic': ['garlic, raw'],
+    'onion': ['onions, raw'],
+    'carrot': ['carrots, raw'],
+    'celery': ['celery, raw'],
+    'tomato': ['tomato, red', 'tomatoes, raw'],
+    'basil': ['basil, fresh'],
+    'pasta': ['pasta, dry', 'pasta, enriched'],
+    'chicken': ['chicken breast', 'chicken, breast'],
+    'chicken breast': ['chicken breast'],
+    'salmon': ['salmon, atlantic', 'salmon, raw'],
+    'lemon': ['lemon, raw'],
+    'rice': ['rice, white', 'rice, brown'],
+    'potato': ['potato, raw', 'potatoes, raw'],
+    'beef': ['beef, ground', 'beef, raw'],
+    'onions': ['onions, raw'],
+    'garlic': ['garlic, raw'],
+    'peas': ['peas, green'],
+    'soy sauce': ['soy sauce'],
 }
 
 # Blacklist: patterns to exclude from fallback results
 EXCLUDE_PATTERNS = {
     'egg': ['eggnog', 'meringue', 'custard', 'mayonnaise', 'quiche'],
     'milk': ['buttermilk', 'milk chocolate', 'evaporated', 'condensed', 'butter'],
-    'sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial'],
+    'sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial', 'brand', 'store'],
     'butter': ['butterbur', 'butterfly', 'nut', 'seed'],
     'chocolate': ['ice cream', 'candy', 'spread', 'pudding', 'cereal'],
+    'salmon': ['salmonberry', 'salmonberries'],
+    'lemon': ['lemon peel', 'lemonade'],
+    'rice': ['cracker', 'puff', 'chip'],
+    'potato': ['flour', 'starch', 'chip', 'flake'],
+    'beef': ['tallow', 'extract', 'broth cube'],
+    'chicken': ['spread', 'noodle', 'soup', 'pate'],
+    'water': ['melon', 'watercress'],
+    'yeast': ['extract', 'spread'],
+    'vanilla': ['extract', 'flavor', 'ice cream'],
+    'graham': ['chocolate', 'coated'],
 }
 
 
