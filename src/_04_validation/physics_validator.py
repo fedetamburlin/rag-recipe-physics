@@ -1,128 +1,207 @@
-"""Physics-based recipe validation module."""
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, List, Optional
+"""Physics-based validation per recipe category.
 
-class ValidationLevel(Enum):
-    LOW = 1
-    MEDIUM = 2
-    HIGH = 3
-    CRITICAL = 4
+Validates generated recipes against empirically-derived ranges
+for hydration, composition, and cooking physics.
 
-@dataclass
-class ValidationResult:
-    code: str
-    message: str
-    level: ValidationLevel
-    suggestion: Optional[str] = None
+Sources:
+- Baker's percentage (Wikipedia): hydration ranges for dough/batter
+- FDA Safe Minimum Internal Temperatures
+- General baking science references
+"""
 
-@dataclass 
-class RecipeValidation:
-    is_valid: bool
-    category: str
-    errors: List[ValidationResult]
-    warnings: List[ValidationResult]
-    
-    def to_dict(self) -> dict:
-        return {
-            "is_valid": self.is_valid,
-            "category": self.category,
-            "errors": [{"code": e.code, "message": e.message, "suggestion": e.suggestion} for e in self.errors],
-            "warnings": [{"code": w.code, "message": w.message, "suggestion": w.suggestion} for w in self.warnings]
-        }
+from typing import List, Tuple, Dict
+import logging
 
-def validate_spread(fat_pct: float, sugar_pct: float) -> dict:
-    """Validate cookie spread ratio using Miller 1997."""
-    spread_ratio = 1.5 + 0.015 * fat_pct + 0.01 * sugar_pct
-    return {"spread_ratio": round(spread_ratio, 2), "risk": "high" if spread_ratio > 3.5 else "low"}
+logger = logging.getLogger(__name__)
 
-def validate_bread_hydration(hydration_pct: float) -> dict:
-    """Validate bread hydration level."""
-    if hydration_pct < 50:
-        return {"status": "error", "message": "Too low - dense crumb", "suggestion": "Increase to 55-70%"}
-    elif hydration_pct < 55:
-        return {"status": "warning", "message": "Low - tight crumb", "suggestion": "Consider 60-65%"}
-    elif hydration_pct <= 70:
-        return {"status": "valid", "message": "Good range for most breads"}
-    elif hydration_pct <= 80:
-        return {"status": "warning", "message": "High - sticky", "suggestion": "Reduce to below 75%"}
+# Validation ranges per category
+VALIDATION_RULES = {
+    "dough_structured": {
+        "hydration_bakers": {"min": 30, "max": 85, "note": "Stiff bagels 50% to ciabatta 80%"},
+        "protein_g": {"min": 4, "max": 15, "note": "Bread needs gluten, cookies lower"},
+        "fat_g": {"min": 0, "max": 35, "note": "Lean bread <5%, brioche/croissant up to 35%"},
+        "sugar_g": {"min": 0, "max": 25, "note": "Bread <10%, sweet pastry higher"},
+        "salt_bakers": {"min": 1.0, "max": 2.5, "note": "Standard 1.5-2.2%"},
+        "yeast_bakers": {"min": 0.5, "max": 3.0, "note": "Fresh yeast, commercial up to 2%"},
+        "internal_temp_C": {"min": 88, "max": 99, "note": "Bread done at 88-96°C internal"},
+    },
+    "batter_baked": {
+        "hydration_bakers": {"min": 60, "max": 250, "note": "Cakes 60-100%, pancakes ~190%"},
+        "protein_g": {"min": 3, "max": 10, "note": "Cakes lower protein than bread"},
+        "fat_g": {"min": 5, "max": 30, "note": "Butter cakes 15-25%"},
+        "sugar_g": {"min": 5, "max": 40, "note": "Sponge cakes higher, savory lower"},
+        "salt_bakers": {"min": 0.5, "max": 2.0, "note": "Generally <2%"},
+        "internal_temp_C": {"min": 88, "max": 99, "note": "Cake done when springy, ~96°C"},
+    },
+    "solid_roast": {
+        "hydration_bakers": {"min": 0, "max": 30, "note": "No flour, water from meat/veg itself"},
+        "protein_g": {"min": 10, "max": 35, "note": "Meat/fish dominant"},
+        "fat_g": {"min": 2, "max": 30, "note": "Lean fish 2-8%, fatty meat 15-25%"},
+        "sugar_g": {"min": 0, "max": 10, "note": "Glaze/marinade only"},
+        "salt_bakers": {"min": 0.5, "max": 2.0, "note": "Seasoning"},
+        "internal_temp_C": {"min": 55, "max": 74, "note": "Fish 63°C, beef 63°C, poultry 74°C"},
+    },
+    "custard_set": {
+        "hydration_bakers": {"min": 20, "max": 100, "note": "High liquid from dairy"},
+        "protein_g": {"min": 5, "max": 15, "note": "Eggs + cheese"},
+        "fat_g": {"min": 5, "max": 25, "note": "Cream cheese, heavy cream"},
+        "sugar_g": {"min": 5, "max": 30, "note": "Dessert custards higher"},
+        "salt_bakers": {"min": 0.2, "max": 1.5, "note": "Quiche slightly more"},
+        "internal_temp_C": {"min": 71, "max": 85, "note": "Coagulation starts 65°C, max 85°C to avoid curdling"},
+    },
+}
+
+# FDA Safe Minimum Internal Temperatures (°C)
+FDA_INTERNAL_TEMPS = {
+    "beef": 63,      # 145°F
+    "pork": 63,      # 145°F
+    "lamb": 63,      # 145°F
+    "ground_meat": 71,  # 160°F
+    "poultry": 74,   # 165°F
+    "fish": 63,      # 145°F
+    "eggs": 71,      # 160°F
+    "leftovers": 74, # 165°F
+}
+
+
+def validate_recipe(
+    ingredients: List[Tuple[str, float]],
+    nutrition: dict,
+    category: str,
+    title: str = "",
+) -> Dict:
+    """Validate recipe against category-specific physics ranges.
+
+    Args:
+        ingredients: List of (name, percentage_decimal)
+        nutrition: Dict with USDA nutrients per 100g
+        category: One of dough_structured, batter_baked, solid_roast, custard_set
+        title: Recipe title
+
+    Returns:
+        Dict with validation results
+    """
+    if category not in VALIDATION_RULES:
+        return {"status": "unknown_category", "category": category}
+
+    rules = VALIDATION_RULES[category]
+    checks = []
+    warnings = []
+    errors = []
+
+    # Extract features from ingredients
+    ing_dict = {name.lower(): pct for name, pct in ingredients}
+    flour = sum(v for k, v in ing_dict.items() if "flour" in k or "farina" in k)
+    water = sum(v for k, v in ing_dict.items() if any(x in k for x in ["water", "acqua", "milk", "latte"]))
+    salt = sum(v for k, v in ing_dict.items() if "salt" in k or "sale" in k)
+    yeast = sum(v for k, v in ing_dict.items() if "yeast" in k or "lievito" in k)
+    sugar = nutrition.get("SUGAR", {}).get("amount", 0) or 0
+
+    # 1. Hydration (baker's %)
+    if flour > 0:
+        hydration = (water / flour) * 100
     else:
-        return {"status": "error", "message": "Too high", "suggestion": "Use 65-70%"}
+        hydration = 0
 
-def validate_pizza_proof(yeast_pct: float, salt_pct: float, temp_C: float = 25) -> dict:
-    """Estimate pizza proof time from yeast/salt/temp."""
-    activity = max(0.1, 1.0 - (salt_pct - 2) * 0.5) if salt_pct > 2 else 1.0
-    temp_factor = 1.0 if 20 <= temp_C <= 30 else (0.5 if temp_C < 20 else max(0.1, 1.5 - (temp_C - 30) * 0.1))
-    base_time = 0.5 / yeast_pct if yeast_pct > 0 else 999
-    proof_time = base_time / (activity * temp_factor)
-    return {"proof_time_h": round(proof_time, 1), "rise_ratio": round(2.0 * activity * temp_factor, 1)}
+    h_rule = rules.get("hydration_bakers")
+    if h_rule:
+        if hydration < h_rule["min"]:
+            errors.append(f"hydration {hydration:.1f}% < {h_rule['min']}% ({h_rule['note']})")
+        elif hydration > h_rule["max"]:
+            errors.append(f"hydration {hydration:.1f}% > {h_rule['max']}% ({h_rule['note']})")
+        else:
+            checks.append(f"hydration {hydration:.1f}% OK")
 
-def validate_yeast_fermentation(yeast_pct: float, salt_pct: float, sugar_pct: float, protein_pct: float = 10, temp_C: float = 25) -> dict:
-    """Full yeast fermentation validation."""
-    activity = max(0.1, 1.0 - (salt_pct - 2) * 0.5) if salt_pct > 2 else 1.0
-    if sugar_pct > 5:
-        activity *= max(0.2, 1.0 - (sugar_pct - 5) * 0.3)
-    temp_factor = 1.0 if 20 <= temp_C <= 30 else (0.5 if temp_C < 20 else max(0.1, 1.5 - (temp_C - 30) * 0.1))
-    base_proof = 0.5 / yeast_pct if yeast_pct > 0 else 999
-    proof_time_h = base_proof / (activity * temp_factor)
-    risk_flags = []
-    if salt_pct > 2.5: risk_flags.append("high_salt_inhibits_yeast")
-    if sugar_pct > 5: risk_flags.append("high_sugar_inhibits_yeast")
-    if protein_pct < 8: risk_flags.append("low_protein_weak_structure")
-    return {"proof_time_h": round(proof_time_h, 1), "risk_flags": risk_flags, "is_valid": len(risk_flags) == 0}
+    # 2. Protein
+    protein = nutrition.get("PROTEIN", {}).get("amount", 0) or 0
+    p_rule = rules.get("protein_g")
+    if p_rule:
+        if protein < p_rule["min"]:
+            warnings.append(f"protein {protein:.1f}g < {p_rule['min']}g ({p_rule['note']})")
+        elif protein > p_rule["max"]:
+            warnings.append(f"protein {protein:.1f}g > {p_rule['max']}g ({p_rule['note']})")
+        else:
+            checks.append(f"protein {protein:.1f}g OK")
 
-def validate_recipe(ingredients: Dict[str, float], category: str, **kwargs) -> dict:
-    """Main validation entry point."""
-    errors, warnings = [], []
-    
-    # Parse baker's %
-    flour = ingredients.get("flour", 100)
-    if flour == 0: flour = 100
-    bakers = {k: (v/flour)*100 for k, v in ingredients.items() if v and v > 0}
-    
-    # Calculate water content
-    water = ingredients.get("water", 0)
-    water += ingredients.get("milk", 0) * 0.87
-    water += ingredients.get("eggs", 0) * 0.75
-    water += ingredients.get("butter", 0) * 0.15
-    hydration = (water / flour) * 100 if flour > 0 else 0
-    
-    # Category-specific validation
-    if category in ["bread", "sourdough"]:
-        if hydration < 50:
-            errors.append({"code": "BREAD_HYD_LOW", "message": f"Hydration {hydration:.0f}% too low", "suggestion": "Increase to 55-70%"})
-        elif hydration > 80:
-            errors.append({"code": "BREAD_HYD_HIGH", "message": f"Hydration {hydration:.0f}% too high", "suggestion": "Reduce to below 75%"})
-        salt = bakers.get("salt_pct", bakers.get("salt", 0))
-        yeast = bakers.get("yeast_pct", bakers.get("yeast", 0))
-        if salt > 2 and yeast > 2:
-            errors.append({"code": "BREAD_YEAST_INHIBITED", "message": "High salt + high yeast inhibits fermentation", "suggestion": "Reduce salt or yeast"})
-            
-    elif category in ["cookie", "biscuit"]:
-        fat = bakers.get("fat_pct", 50)
-        sugar = bakers.get("sugar_pct", 60)
-        spread = 1.5 + 0.015 * fat + 0.01 * sugar
-        if spread < 2.0:
-            warnings.append({"code": "COOKIE_SPREAD_LOW", "message": f"Low spread ({spread:.1f})", "suggestion": "Increase fat"})
-        elif spread > 4.0:
-            warnings.append({"code": "COOKIE_SPREAD_HIGH", "message": f"High spread ({spread:.1f})", "suggestion": "Reduce fat"})
-            
-    elif category in ["pizza", "calzone"]:
-        if hydration < 50:
-            errors.append({"code": "PIZZA_HYD_LOW", "message": f"Hydration {hydration:.0f}% too low", "suggestion": "Increase to 55-65%"})
-        temp_C = kwargs.get("bake_temp_C", 180)
-        time_min = kwargs.get("bake_time_min", 15)
-        if temp_C >= 450 and time_min > 2.5:
-            errors.append({"code": "PIZZA_OVERBAKE", "message": f"HiT {temp_C}°C for {time_min}min = acrylamide risk", "suggestion": "Limit to 2 min"})
-            
-    return {"is_valid": len(errors) == 0, "category": category, "errors": errors, "warnings": warnings}
+    # 3. Fat
+    fat = nutrition.get("FAT", {}).get("amount", 0) or 0
+    f_rule = rules.get("fat_g")
+    if f_rule:
+        if fat < f_rule["min"]:
+            warnings.append(f"fat {fat:.1f}g < {f_rule['min']}g ({f_rule['note']})")
+        elif fat > f_rule["max"]:
+            warnings.append(f"fat {fat:.1f}g > {f_rule['max']}g ({f_rule['note']})")
+        else:
+            checks.append(f"fat {fat:.1f}g OK")
 
-if __name__ == "__main__":
-    print("=== Bread Validation ===")
-    print(validate_recipe({"flour": 500, "water": 325, "yeast": 5, "salt": 10}, "bread"))
-    
-    print("\n=== Cookie Spread ===")
-    print(validate_spread(60, 80))
-    
-    print("\n=== Pizza Proof ===")
-    print(validate_pizza_proof(0.04, 1.8, 25))
+    # 4. Sugar
+    s_rule = rules.get("sugar_g")
+    if s_rule:
+        if sugar < s_rule["min"]:
+            warnings.append(f"sugar {sugar:.1f}g < {s_rule['min']}g ({s_rule['note']})")
+        elif sugar > s_rule["max"]:
+            warnings.append(f"sugar {sugar:.1f}g > {s_rule['max']}g ({s_rule['note']})")
+        else:
+            checks.append(f"sugar {sugar:.1f}g OK")
+
+    # Pre-calculate baker's percentages
+    if flour > 0:
+        salt_bakers = (salt / flour) * 100
+        yeast_bakers = (yeast / flour) * 100
+    else:
+        salt_bakers = 0
+        yeast_bakers = 0
+
+    # 5. Salt (baker's %)
+    salt_rule = rules.get("salt_bakers")
+    if salt_rule:
+        if salt_bakers < salt_rule["min"]:
+            warnings.append(f"salt {salt_bakers:.1f}% < {salt_rule['min']}% ({salt_rule['note']})")
+        elif salt_bakers > salt_rule["max"]:
+            errors.append(f"salt {salt_bakers:.1f}% > {salt_rule['max']}% ({salt_rule['note']})")
+        else:
+            checks.append(f"salt {salt_bakers:.1f}% OK")
+
+    # 6. Yeast (baker's %, dough only)
+    yeast_rule = rules.get("yeast_bakers")
+    if yeast_rule and flour > 0 and yeast_bakers > 0:
+        if yeast_bakers < yeast_rule["min"]:
+            warnings.append(f"yeast {yeast_bakers:.1f}% < {yeast_rule['min']}% ({yeast_rule['note']})")
+        elif yeast_bakers > yeast_rule["max"]:
+            warnings.append(f"yeast {yeast_bakers:.1f}% > {yeast_rule['max']}% ({yeast_rule['note']})")
+        else:
+            checks.append(f"yeast {yeast_bakers:.1f}% OK")
+
+    # 7. Internal temperature guidance (informational)
+    temp_rule = rules.get("internal_temp_C")
+    if temp_rule:
+        checks.append(f"target internal temp: {temp_rule['min']}-{temp_rule['max']}°C ({temp_rule['note']})")
+
+    # Determine overall status
+    if errors:
+        status = "invalid"
+    elif warnings:
+        status = "warning"
+    else:
+        status = "valid"
+
+    return {
+        "status": status,
+        "category": category,
+        "checks": checks,
+        "warnings": warnings,
+        "errors": errors,
+        "metrics": {
+            "hydration_bakers": round(hydration, 1),
+            "protein_g": round(protein, 1),
+            "fat_g": round(fat, 1),
+            "sugar_g": round(sugar, 1),
+            "salt_bakers": round(salt_bakers, 2),
+            "yeast_bakers": round(yeast_bakers, 2) if flour > 0 else 0,
+        }
+    }
+
+
+def get_fda_temp(food_type: str) -> int:
+    """Get FDA recommended internal temperature in Celsius."""
+    return FDA_INTERNAL_TEMPS.get(food_type, 74)  # Default to poultry-safe

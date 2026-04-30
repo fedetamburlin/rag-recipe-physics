@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 from _03_feature_extraction.feature_extractor import RecipeFeatureExtractor
 from _03_feature_extraction.classifier import classify_recipe
+from _04_validation.physics_validator import validate_recipe
 
 
 def main():
@@ -185,6 +186,18 @@ if __name__ == "__main__":
                     cat_result = classify_recipe(ingredients, title=result.split('TITLE:')[-1].strip() if 'TITLE:' in result else "")
                     category = cat_result["category"]
                     print(f"\n[Classification] {category} (method: {cat_result['method']}, confidence: {cat_result['confidence']})")
+                    
+                    # Validate against physics ranges
+                    val_result = validate_recipe(ingredients, nutrition, category, title=result.split('TITLE:')[-1].strip() if 'TITLE:' in result else "")
+                    print(f"\n[Validation] {val_result['status'].upper()}")
+                    if val_result['errors']:
+                        print("  Errors:")
+                        for e in val_result['errors']:
+                            print(f"    - {e}")
+                    if val_result['warnings']:
+                        print("  Warnings:")
+                        for w in val_result['warnings']:
+                            print(f"    - {w}")
                     
                     extractor = RecipeFeatureExtractor()
                     features = extractor.extract(ingredients, nutrition, taxonomy, category)
