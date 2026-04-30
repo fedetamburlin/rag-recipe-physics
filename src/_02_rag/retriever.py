@@ -101,6 +101,25 @@ class RAGRetriever:
         
         logger.info(f"Cache saved to {self.cache_dir}")
     
+    @staticmethod
+    def _is_oven_recipe(title: str, instructions: str) -> bool:
+        """Filter dataset to keep only oven-bakeable recipes."""
+        text = (title + " " + instructions).lower()
+        exclude = [
+            "no-bake", "no bake", "slow cooker", "crockpot", "stove top",
+            "refrigerate", "no cook", "salad", "soup", "dip", "frosting",
+            "no cooking", "freezer", "cold", "raw"
+        ]
+        if any(w in text for w in exclude):
+            return False
+        include = [
+            "bake", "baking", "baked", "oven", "roast", "roasted",
+            "bread", "cake", "pie", "tart", "cookie", "pastry",
+            "275°", "300°", "325°", "350°", "375°", "400°", "425°", "450°",
+            "degrees", "°f"
+        ]
+        return any(w in text for w in include)
+
     def _ingest_dataset(self):
         from datasets import load_dataset
         
@@ -113,6 +132,7 @@ class RAGRetriever:
         
         documents = []
         metadata = []
+        skipped = 0
         
         for i, row in enumerate(dataset):
             title = row.get('title', f'Recipe {i}').strip() or f'Recipe {i}'
@@ -122,6 +142,10 @@ class RAGRetriever:
                 instructions = ' '.join(dir_list[:5])
             except:
                 instructions = str(row.get('directions', ''))[:200]
+            
+            if not self._is_oven_recipe(title, instructions):
+                skipped += 1
+                continue
             
             ingredients = row.get('ingredients', row.get('NER', ''))
             if isinstance(ingredients, str):
@@ -136,6 +160,8 @@ class RAGRetriever:
                 'ingredients': ingredients[:500],
                 'instructions': instructions[:500],
             })
+        
+        logger.info(f"Kept {len(documents)} oven recipes (skipped {skipped})")
         
         logger.info(f"Encoding {len(documents)} documents...")
         t0 = time.time()
