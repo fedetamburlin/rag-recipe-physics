@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger(__name__)
 
 from _03_feature_extraction.feature_extractor import RecipeFeatureExtractor
+from _03_feature_extraction.classifier import classify_recipe
 
 
 def main():
@@ -179,8 +180,14 @@ if __name__ == "__main__":
                     
                     # Extract physicochemical features for oven prediction
                     ingredients = retriever.parse_ingredients(result)
+                    
+                    # Classify recipe family
+                    cat_result = classify_recipe(ingredients, title=result.split('TITLE:')[-1].strip() if 'TITLE:' in result else "")
+                    category = cat_result["category"]
+                    print(f"\n[Classification] {category} (method: {cat_result['method']}, confidence: {cat_result['confidence']})")
+                    
                     extractor = RecipeFeatureExtractor()
-                    features = extractor.extract(ingredients, nutrition, taxonomy)
+                    features = extractor.extract(ingredients, nutrition, taxonomy, category)
                     print("\n[Features for oven prediction]")
                     for k, v in features.items():
                         print(f"  {k}: {v}")

@@ -10,6 +10,8 @@ from typing import List, Tuple, Dict
 from pathlib import Path
 import json
 
+from _03_feature_extraction.classifier import CATEGORY_MAP
+
 # Simplified thermal properties for mixing rule (per 100g basis)
 THERMAL_PROPS = {
     "water":   {"cp": 4186, "k": 0.60, "rho": 1000},
@@ -50,6 +52,7 @@ class RecipeFeatureExtractor:
             "density_kg_m3",
             "thermal_diffusivity",
             "taxonomy_encoded",
+            "category_encoded",
         ]
 
     def _analyze_base_ingredients(
@@ -125,6 +128,7 @@ class RecipeFeatureExtractor:
         ingredients: List[Tuple[str, float]],
         nutrition: dict,
         taxonomy: str,
+        category: str = "batter_baked",
     ) -> dict:
         """Extract 10 core features from recipe ingredients and nutrition.
 
@@ -164,6 +168,9 @@ class RecipeFeatureExtractor:
         # 10: Taxonomy encoding
         features["taxonomy_encoded"] = TAXONOMY_MAP.get(taxonomy, TAXONOMY_MAP["other"])
 
+        # 11: Physical family category
+        features["category_encoded"] = CATEGORY_MAP.get(category, CATEGORY_MAP["batter_baked"])
+
         return features
 
     def get_feature_names(self) -> List[str]:
@@ -183,10 +190,11 @@ def extract_features(
     ingredients: List[Tuple[str, float]],
     nutrition: dict,
     taxonomy: str,
+    category: str = "batter_baked",
 ) -> dict:
     """Convenience function."""
     extractor = RecipeFeatureExtractor()
-    return extractor.extract(ingredients, nutrition, taxonomy)
+    return extractor.extract(ingredients, nutrition, taxonomy, category)
 
 
 if __name__ == "__main__":

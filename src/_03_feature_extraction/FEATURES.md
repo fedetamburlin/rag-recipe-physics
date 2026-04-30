@@ -48,6 +48,13 @@ leavened=0, whipped=1, doughs=2, preserves=3,
 creams=4, meats=5, seafood=6, other=7
 ```
 
+### `category_encoded`
+Physical family from classifier:
+```
+dough_structured=0, batter_baked=1, solid_roast=2, custard_set=3
+```
+Classification: rule-based (ingredients + title keywords), LLM fallback if ambiguous.
+
 ## Thermal Properties Used
 
 | Component | ρ (kg/m3) | cp (J/kg*K) | k (W/m*K) |
