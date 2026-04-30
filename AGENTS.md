@@ -6,6 +6,8 @@ Python RAG pipeline for recipe generation with multilingual query support.
 
 ## Run Commands
 
+**Always run from `src/` directory** (paths like `cache/rag/` are relative to src/):
+
 ```bash
 cd src
 
@@ -32,7 +34,7 @@ python main.py --query "gluten-free bread" --skip-generation
 All settings in `config/pipeline.yaml`:
 - Retrieval: embedder (`all-MiniLM-L6-v2`), reranker (`ms-marco-MiniLM-L-6-v2`), k values
 - LLM: model (`qwen2.5:3b`), temperature, context size
-- RAG: dataset (`nuhuibrahim/recifine`), cache dir (`cache/rag`)
+- RAG: dataset (`nuhuibrahim/recifine`), dataset_size: 20000, cache_dir: `cache/rag`
 
 ## Architecture
 
@@ -52,29 +54,31 @@ Query → QueryAnalyzer (parser/query_analyzer.py)
 
 ## Cache
 
-Embeddings and metadata cached in `cache/rag/recipes_*`. Delete cache to re-download dataset.
+Embeddings and metadata cached in `src/cache/rag/recipes_*`. Delete cache to force re-download and re-encode (20k recipes takes ~6 min). Cache key includes dataset_size.
 
 ## Nutrition Database (Separate Module)
 
 ### Database Setup
 ```bash
-# Ingest USDA data into SQLite
 python scripts/ingest_usda.py
 ```
 
 ### Usage
 ```python
-from src.nutrition.ingredient_lookup import IngredientMatcher
-from src.nutrition.nutrition_calculator import calculate_recipe_nutrients
+from src.nutrition import IngredientMatcher, calculate_recipe_nutrients
 
-# Match ingredients to USDA foods
+# Match ingredients to USDA foods (with priority list + blacklist)
 matcher = IngredientMatcher()
 matched = matcher.match_ingredients(['butter', 'flour', 'sugar'])
 
-# Calculate nutrition totals
+# Calculate nutrition totals (percentages in 0-1 range, not 0-100)
 result = calculate_recipe_nutrients(['butter', 'flour', 'sugar'], matched)
-# Returns: {Energy: {amount: X, unit: KCAL}, Protein: ..., ...}
+# Returns: {'ENERGY': {'amount': X, 'unit': 'KCAL'}, ...}
 ```
 
+### Known Issues (Debugged)
+- **Ingredient matching**: Some ingredients (cinnamon, coffee) return wrong foods. Priority list in `ingredient_lookup.py` maps to exact USDA descriptions.
+- **Nutrition calculation**: Percentages must be decimal (0-1) not integer (0-100). The RAGRetriever scaling bug was fixed but verify if parsing changes.
+
 ### Database Location
-- SQLite: `data/usda_nutrients.db` (85k foods, 477 nutrients, 800k+ nutrient links)
+- SQLite: `data/usda_nutrients.db` (19k foods, 44 nutrient codes)
