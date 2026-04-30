@@ -30,7 +30,7 @@ python main.py --query "..." --debug
 `config/pipeline.yaml` controls everything:
 - Retrieval: `first_stage_k: 30`, `final_k: 3`, embedder (`all-MiniLM-L6-v2`), reranker (`ms-marco-MiniLM-L-6-v2`)
 - LLM: `qwen2.5:3b`, temperature, `num_ctx: 8192`
-- RAG: `dataset_size: 20000`, cache in `cache/rag/`
+- RAG: `dataset_size: 50000`, cache in `cache/rag/`
 
 ## Architecture
 
@@ -64,7 +64,9 @@ Query → QueryAnalyzer (_01_parser/query_analyzer.py)
 src/
 ├── _01_parser/              # Step 1: query parsing
 ├── _02_rag/                 # Step 2: retrieval + generation + nutrition
-├── _03_feature_extraction/  # Step 3: physicochemical feature extraction
+│                              └── _is_oven_recipe() filters dataset for oven-only
+├── _03_feature_extraction/  # Step 3: physicochemical feature extraction + classifier
+│                              └── classifier.py: 4 families (dough, batter, roast, custard)
 ├── _04_validation/          # Step 4: empirical validation
 ├── nutrition/               # Shared library (USDA DB, no number)
 └── main.py
@@ -72,7 +74,7 @@ src/
 
 ## Cache
 
-Delete `cache/rag/recipes_*` to force re-download + re-encode (~6 min for 20k recipes).
+Delete `cache/rag/recipes_*` to force re-download + re-encode (~6 min for 50k recipes, ~23k oven recipes kept after filtering).
 
 ## Nutrition Module
 
