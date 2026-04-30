@@ -1,7 +1,7 @@
 """Recipe classifier for oven-bakeable recipes.
 
 Maps parsed recipe ingredients + title to 4 physical families.
-Rule-based first, LLM fallback if ambiguous.
+Rule-based first (ingredients prioritized over title), LLM fallback if ambiguous.
 
 Categories
 ==========
@@ -45,7 +45,7 @@ CATEGORY_MAP = {
     "custard_set": 3,
 }
 
-# Keyword lists for title-based classification
+# Keyword lists for title-based tie-breaking
 DOUGH_KEYWORDS = [
     "bread", "pizza", "croissant", "puff", "pie crust", "shortcrust",
     "cookie", "biscuit", "pastry", "sfoglia", "frolla", "lasagn", "lasagna",
@@ -72,15 +72,12 @@ def classify_recipe(
 ) -> Dict:
     """Classify oven recipe into 4 physical families.
 
-    Rule-based classification with deterministic priority:
-    1. custard_set (egg + dairy, little flour)
-    2. solid_roast (no flour, solid protein/veg)
-    3. dough_structured vs batter_baked (flour dominant, yeast/keywords/fat ratio)
-    4. LLM fallback if ambiguous
+    Priority: ingredients first, title keywords as tie-breaker, LLM fallback.
+    This makes the classifier robust against misleading titles from LLM output.
 
     Args:
         ingredients: List of (name, percentage_decimal) tuples
-        title: Recipe title for keyword boost
+        title: Recipe title for keyword tie-breaking
         use_llm: If True, call LLM when rules are ambiguous
 
     Returns:
@@ -105,66 +102,72 @@ def classify_recipe(
     # Solid pieces (meat, fish, vegetables)
     solid = sum(v for k, v in ing_dict.items() if any(x in k for x in SOLID_KEYWORDS))
 
-    # Title-only strong indicators (independent of ingredient ratios)
-    if any(k in title_lower for k in ["lasagna", "lasagne", "cannelloni", "pasta al forno"]):
-        return {"category": "dough_structured", "method": "rule", "confidence": 0.90}
-
-    # --- 1. CUSTARD: egg + dairy dominant, flour minor ---
+    # --- 1. CUSTARD: egg + dairy dominant, flour minor (ingredients) ---
     if egg > 0.15 and dairy > 0.15 and flour < 0.20:
         return {"category": "custard_set", "method": "rule", "confidence": 0.92}
 
-    # --- 2. SOLID ROAST: solid piece dominant ---
-    # Exclude obvious pies/pastry/custard by title
+    # --- 2. SOLID ROAST: title says roast/meat/fish (override LLM errors) ---
     excluded_for_solid = any(k in title_lower for k in [
-        "pie", "tart", "quiche", "casserole", "cake", "cookie", "bread", "pizza", "lasagn"
+        "pie", "tart", "quiche", "casserole", "cake", "cookie", "bread", "pizza", "lasagn",
+        "wellington", "empanada", "calzone", "pastry"
     ])
-
     if not excluded_for_solid:
-        # Title strongly indicates roasting
-        if any(k in title_lower for k in ["roast", "grilled", "arrosto"]):
-            if flour < 0.30:
-                return {"category": "solid_roast", "method": "rule", "confidence": 0.88}
-        # Ingredient-based
-        if flour < 0.05 and solid > 0.30:
-            return {"category": "solid_roast", "method": "rule", "confidence": 0.85}
+        if any(k in title_lower for k in ["roast", "grilled", "arrosto", "beef", "steak"]):
+            if flour < 0.35:
+                return {"category": "solid_roast", "method": "rule_title", "confidence": 0.85}
+        if any(k in title_lower for k in ["salmon", "cod", "trout", "fish", "pesce"]):
+            if flour < 0.35:
+                return {"category": "solid_roast", "method": "rule_title", "confidence": 0.85}
 
-    # --- 3 & 4. DOUGH vs BATTER: flour dominant ---
+    # --- 3. SOLID ROAST: no flour, solid piece dominant (ingredients) ---
+    if flour < 0.05 and solid > 0.30:
+        return {"category": "solid_roast", "method": "rule", "confidence": 0.88}
+
+    # --- 4. DOUGH: yeast present (ingredients) ---
+    if yeast:
+        return {"category": "dough_structured", "method": "rule", "confidence": 0.90}
+
+    # --- 5. BATTER: chemical leavening (ingredients) ---
+    if baking_powder:
+        return {"category": "batter_baked", "method": "rule", "confidence": 0.88}
+
+    # --- 6. FLOUR-DOMINANT (>10%): distinguish dough vs batter ---
     if flour > 0.10:
         is_dough_title = any(k in title_lower for k in DOUGH_KEYWORDS)
         is_batter_title = any(k in title_lower for k in BATTER_KEYWORDS)
 
-        # Batter keyword wins (cake, brownie, muffin, etc.)
-        if is_batter_title:
-            return {"category": "batter_baked", "method": "rule", "confidence": 0.88}
+        # Batter keyword wins
+        if is_batter_title and not is_dough_title:
+            return {"category": "batter_baked", "method": "rule_title", "confidence": 0.85}
 
-        # Dough keyword wins (bread, pizza, cookie, lasagna, etc.)
-        if is_dough_title:
-            return {"category": "dough_structured", "method": "rule", "confidence": 0.88}
+        # Dough keyword wins
+        if is_dough_title and not is_batter_title:
+            return {"category": "dough_structured", "method": "rule_title", "confidence": 0.85}
 
-        # Chemical leavening → batter
-        if baking_powder:
-            return {"category": "batter_baked", "method": "rule", "confidence": 0.85}
-
-        # Yeast → dough
-        if yeast:
-            return {"category": "dough_structured", "method": "rule", "confidence": 0.85}
-
-        # High fat ratio → pastry/dough (shortcrust without explicit keyword)
+        # High fat ratio → pastry/dough
         if flour > 0 and fat / flour > 0.8:
-            return {"category": "dough_structured", "method": "rule", "confidence": 0.75}
+            return {"category": "dough_structured", "method": "rule", "confidence": 0.80}
 
         # Hydration heuristic for edge cases
         water = sum(v for k, v in ing_dict.items() if any(x in k for x in ["water", "acqua", "milk", "latte"]))
-        if flour > 0 and water / flour < 0.6:
-            return {"category": "dough_structured", "method": "rule", "confidence": 0.60}
-        else:
-            return {"category": "batter_baked", "method": "rule", "confidence": 0.60}
+        if flour > 0 and water / flour < 0.5:
+            return {"category": "dough_structured", "method": "rule", "confidence": 0.65}
+        if flour > 0 and water / flour > 1.2:
+            return {"category": "batter_baked", "method": "rule", "confidence": 0.65}
+
+        # Both or neither title keyword → LLM fallback
+        if use_llm:
+            return _classify_with_llm(title, ingredients)
+        return {"category": "batter_baked", "method": "forced_fallback", "confidence": 0.40}
+
+    # --- 7. LOW FLOUR (<10%): solid or ambiguous ---
+    if solid > 0.20:
+        return {"category": "solid_roast", "method": "rule", "confidence": 0.65}
 
     # --- AMBIGUOUS: call LLM if enabled ---
     if use_llm:
         return _classify_with_llm(title, ingredients)
 
-    # Forced fallback (should rarely happen with LLM enabled)
     logger.warning("Ambiguous classification without LLM, forcing batter_baked")
     return {"category": "batter_baked", "method": "forced_fallback", "confidence": 0.30}
 
