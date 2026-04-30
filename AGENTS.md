@@ -47,9 +47,11 @@ Query → QueryAnalyzer (parser/query_analyzer.py)
      → RAGRetriever (rag/retriever.py)
         ├─ Bi-encoder retrieval (sentence-transformers)
         ├─ Cross-encoder reranking
-        └─ Taxonomy classification (keyword-based)
+        ├─ Taxonomy classification (keyword-based)
+        └─ Nutrition calculation (ingredient_lookup + nutrition_calculator)
 
      → Ollama generation (qwen2.5:3b)
+        └─ Parse ingredients from generated text + scale by percentage
 ```
 
 ## Cache
