@@ -4,7 +4,7 @@ import time
 import ast
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List
 import numpy as np
 import yaml
 import logging
@@ -15,6 +15,147 @@ try:
     import ollama
 except ImportError:
     raise ImportError("ollama package required: pip install ollama")
+
+try:
+    from nutrition.ingredient_lookup import IngredientMatcher
+    from nutrition.nutrition_calculator import NutritionCalculator
+except ModuleNotFoundError:
+    try:
+        from src.nutrition.ingredient_lookup import IngredientMatcher
+        from src.nutrition.nutrition_calculator import NutritionCalculator
+    except ModuleNotFoundError:
+        IngredientMatcher = None
+        NutritionCalculator = None
+
+
+# Rough volume-to-weight conversions (grams)
+UNIT_WEIGHTS = {
+    "cup": 240, "c": 240, "c.": 240,
+    "tbsp": 15, "tablespoon": 15, "tbs": 15,
+    "tsp": 5, "teaspoon": 5,
+    "oz": 28, "ounce": 28,
+    "lb": 454, "pound": 454,
+    "g": 1, "gm": 1, "gram": 1,
+    "kg": 1000, "kilogram": 1000,
+    "ml": 1, "l": 1000, "liter": 1000,
+    "stick": 113,  # butter stick
+}
+
+# Density rough estimates for common ingredients (g per cup or unit)
+INGREDIENT_DENSITY = {
+    "flour": 120, "sugar": 200, "brown sugar": 200, "powdered sugar": 120,
+    "butter": 227, "oil": 218, "lard": 205, "shortening": 205,
+    "water": 240, "milk": 244, "buttermilk": 242, "cream": 240,
+    "egg": 50, "eggs": 50, "egg white": 30, "egg yolk": 18,
+    "honey": 340, "syrup": 340, "molasses": 340,
+    "cocoa": 85, "chocolate": 170,
+    "oats": 90, "cornmeal": 145,
+    "cheese": 100,  # grated/shredded
+    "chicken": 150, "beef": 150, "pork": 150, "fish": 150,
+    "yeast": 140,  # active dry per packet ~7g but per cup ~140g
+}
+
+
+def _parse_ingredient_line(line: str) -> tuple:
+    """Parse a single ingredient line into (name, approx_grams)."""
+    line = line.strip().lower()
+    if not line:
+        return None, 0
+
+    # Extract number
+    num_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:\d/\d+)?', line)
+    if not num_match:
+        return None, 0
+    num = float(num_match.group(1))
+
+    # Handle fractions like 1/2, 3/4
+    frac_match = re.search(r'(\d)/(\d)', line)
+    if frac_match:
+        num += float(frac_match.group(1)) / float(frac_match.group(2))
+
+    # Extract unit
+    unit = None
+    for u in UNIT_WEIGHTS:
+        pattern = r'\b' + re.escape(u) + r'\.?\b'
+        if re.search(pattern, line):
+            unit = u
+            break
+
+    # Default: if no unit found, assume the number is count (eggs, lemons, etc.)
+    if unit:
+        base_weight = num * UNIT_WEIGHTS[unit]
+    else:
+        base_weight = num * 50  # Default ~50g per item
+
+    # Apply density based on ingredient name
+    density = 1.0
+    for ing_key, ing_density in INGREDIENT_DENSITY.items():
+        if ing_key in line:
+            # If unit was a volume measure, scale by density relative to water
+            if unit in ("cup", "c", "c.", "tbsp", "tsp", "ml"):
+                density = ing_density / 240  # Normalize per cup
+            else:
+                density = ing_density / 150  # Rough average
+            break
+
+    weight = base_weight * density
+
+    # Extract name (everything after the measurement)
+    name = re.sub(r'^[^a-z]*', '', line).strip()
+    # Clean up common prefixes
+    name = re.sub(r'^(?:\d+\s+)?(?:\d/\d+\s+)?(?:c\.?|cup|tbsp|tsp|oz|lb|g|ml|stick|package|pkg|can)\s*', '', name)
+    name = re.sub(r',.*$', '', name).strip()
+
+    return name, weight
+
+
+def _categorize_ingredient(name: str) -> str:
+    """Map ingredient name to macro category."""
+    name = name.lower()
+    categories = {
+        "flour": ["flour", "farina", "semola", "cornmeal", "meal"],
+        "sugar": ["sugar", "honey", "syrup", "molasses", "sweetener"],
+        "fat": ["butter", "oil", "lard", "shortening", "margarine", "ghee"],
+        "liquid": ["water", "milk", "cream", "buttermilk", "beer", "wine", "juice", "coffee", "liqueur"],
+        "protein": ["egg", "chicken", "beef", "pork", "lamb", "turkey", "fish", "salmon", "cod", "tuna",
+                   "cheese", "bacon", "ham", "sausage", "yogurt"],
+        "leavening": ["yeast", "baking powder", "baking soda", "bicarbonate"],
+        "chocolate": ["cocoa", "chocolate"],
+        "salt": ["salt", "sale"],
+        "starch": ["cornstarch", "arrowroot", "starch"],
+    }
+    for cat, keywords in categories.items():
+        if any(k in name for k in keywords):
+            return cat
+    return "other"
+
+
+def extract_proportions_from_recipes(retrieved) -> str:
+    """Extract rough ingredient proportions from retrieved recipes for few-shot prompting."""
+    all_categories = {}
+    total_weight = 0
+
+    for r in retrieved[:2]:  # Only top 2
+        items = [i.strip() for i in r.ingredients.split(",") if i.strip()]
+        for item in items:
+            name, weight = _parse_ingredient_line(item)
+            if name and weight > 0:
+                cat = _categorize_ingredient(name)
+                all_categories[cat] = all_categories.get(cat, 0) + weight
+                total_weight += weight
+
+    if total_weight == 0:
+        return "No proportion data available."
+
+    # Build proportion string
+    proportions = []
+    for cat in ["flour", "protein", "sugar", "fat", "liquid", "chocolate", "leavening", "salt", "other"]:
+        if cat in all_categories:
+            pct = (all_categories[cat] / total_weight) * 100
+            if pct > 2:  # Only show categories > 2%
+                proportions.append(f"{cat} ~{pct:.0f}%")
+
+    return ", ".join(proportions)
 
 
 @dataclass
@@ -245,30 +386,98 @@ class RAGRetriever:
         
         forbidden = forbidden or []
         
-        avg_ing = sum(len(r.ingredients.split(',')) for r in retrieved) // len(retrieved)
+        # Use top 2 retrieved recipes with full context
+        top_retrieved = retrieved[:2]
+        avg_ing = sum(len(r.ingredients.split(',')) for r in top_retrieved) // len(top_retrieved)
         
-        context = "\n".join(
-            f"- {r.title}: {r.ingredients[:100]}"
-            for r in retrieved
+        # Extract rough proportions from retrieved for few-shot
+        proportions_text = extract_proportions_from_recipes(top_retrieved)
+        
+        context = "\n\n".join(
+            f"Reference Recipe {i+1}: {r.title}\n"
+            f"  Ingredients: {r.ingredients[:300]}\n"
+            f"  Method: {r.instructions[:200]}"
+            for i, r in enumerate(top_retrieved)
         )
         
+        # Determine query category for few-shot examples
+        q_lower = query.lower()
+        
+        # Build few-shot examples based on query type
+        few_shot = ""
+        if any(k in q_lower for k in ["bread", "baguette", "ciabatta", "focaccia"]):
+            few_shot = (
+                "Example (Bread):\n"
+                "INGREDIENTS: flour 55%, water 35%, yeast 2%, salt 1.5%, oil 3.5%, sugar 3%\n"
+                "TITLE: Simple White Bread\n\n"
+            )
+        elif any(k in q_lower for k in ["cake", "brownie", "muffin", "cupcake"]):
+            few_shot = (
+                "Example (Chocolate Cake):\n"
+                "INGREDIENTS: flour 25%, sugar 25%, butter 15%, eggs 15%, milk 10%, cocoa 10%\n"
+                "TITLE: Rich Chocolate Cake\n\n"
+            )
+        elif any(k in q_lower for k in ["roast", "chicken", "beef", "pork", "salmon", "fish"]):
+            few_shot = (
+                "Example (Roast Chicken):\n"
+                "INGREDIENTS: chicken 70%, garlic 8%, lemon 8%, olive oil 7%, rosemary 4%, salt 1.5%, pepper 1.5%\n"
+                "TITLE: Herb-Roasted Chicken\n\n"
+            )
+        elif any(k in q_lower for k in ["quiche", "souffle", "cheesecake", "custard"]):
+            few_shot = (
+                "Example (Quiche):\n"
+                "INGREDIENTS: flour 30%, eggs 15%, milk 20%, cheese 15%, ham 10%, spinach 8%, salt 2%\n"
+                "TITLE: Classic Ham and Cheese Quiche\n\n"
+            )
+        elif any(k in q_lower for k in ["cookie", "biscuit", "shortbread", "macaron"]):
+            few_shot = (
+                "Example (Chocolate Chip Cookies):\n"
+                "INGREDIENTS: flour 30%, sugar 25%, butter 25%, eggs 10%, chocolate chips 8%, vanilla 1%, salt 1%\n"
+                "TITLE: Classic Chocolate Chip Cookies\n\n"
+            )
+
         system_prompt = (
-            "Generate a recipe. Output ONLY exactly this format with percentages:\n\n"
-            "INGREDIENTS: flour 30%, sugar 25%, butter 20%, egg 15%, milk 10%\n"
-            "TITLE: Recipe Name\n\n"
-            "Replace with your recipe. Use exactly 5 ingredients. Percentages MUST sum to 100%.\n"
-            "IMPORTANT: Salt MUST be 1% or less. Other ingredients fill the rest."
+            "You are a recipe assistant. Generate a realistic recipe inspired by the reference recipes provided.\n\n"
+            f"{few_shot}"
+            "CRITICAL RULES:\n"
+            "1. Use ingredients SIMILAR to the reference recipes below.\n"
+            "2. The main ingredient MUST match what the user asks for.\n"
+            "3. Use ingredient PROPORTIONS similar to the example above.\n"
+            "4. Output ONLY this exact format with PERCENTAGES:\n"
+            "   INGREDIENTS: name XX%, name XX%, ...\n"
+            "   TITLE: Recipe Name\n"
+            "5. EVERY ingredient MUST have a percentage.\n"
+            "6. Percentages MUST sum to 100%.\n"
+            "7. Salt MUST be 1% or less.\n"
+            "8. Use 4-8 ingredients.\n"
+            "9. Do NOT invent ingredients unrelated to the reference recipes."
         )
         
-        user_prompt = f"Context:\n\n{context}\n\n"
+        # Add proportion guide based on query keywords
+        proportion_hint = ""
+        if any(k in q_lower for k in ["bread", "baguette", "ciabatta", "focaccia"]):
+            proportion_hint = "\nPROPORTION GUIDE: flour ~55%, water ~35%, yeast ~2%, salt ~1.5%, oil ~3%, sugar ~3.5%"
+        elif any(k in q_lower for k in ["cake", "brownie", "muffin", "cupcake"]):
+            proportion_hint = "\nPROPORTION GUIDE: flour ~25%, sugar ~25%, butter ~15%, eggs ~15%, milk ~10%, cocoa/chocolate ~10%"
+        elif any(k in q_lower for k in ["roast", "chicken", "beef", "pork", "salmon", "fish"]):
+            proportion_hint = "\nPROPORTION GUIDE: meat/fish ~70%, oil/butter ~8%, garlic/onion ~10%, lemon/herbs ~10%, salt ~1%, pepper ~1%"
+        elif any(k in q_lower for k in ["quiche", "souffle", "cheesecake", "custard"]):
+            proportion_hint = "\nPROPORTION GUIDE: flour/crust ~30%, eggs ~15%, milk/cream ~20%, cheese ~15%, filling ~15%, salt ~0.5%"
+        elif any(k in q_lower for k in ["cookie", "biscuit", "shortbread", "macaron"]):
+            proportion_hint = "\nPROPORTION GUIDE: flour ~30%, sugar ~25%, butter ~25%, eggs ~10%, vanilla ~5%, salt ~1%, chocolate/nuts ~4%"
+
+        user_prompt = (
+            f"Reference Recipes:\n\n{context}\n\n"
+            f"REQUIREMENT: Create a recipe for '{query}'. "
+            f"The main ingredients must be typical of '{query}'. "
+            f"Use about {avg_ing} ingredients.{proportion_hint}"
+        )
         
         if forbidden:
-            user_prompt += f"FORBIDDEN INGREDIENTS: {', '.join(forbidden)}.\n"
-        
-        user_prompt += f"\nTASK: Create a new recipe that satisfies: {query}. Use about {avg_ing} ingredients."
+            user_prompt += f"\nFORBIDDEN INGREDIENTS: {', '.join(forbidden)}."
         
         if taxonomy:
-            user_prompt += f"\nType: {taxonomy}"
+            user_prompt += f"\nCategory: {taxonomy}"
         
         if self.debug:
             print(f"\n[DEBUG] System: {system_prompt[:200]}...")
@@ -344,59 +553,39 @@ class RAGRetriever:
 
     def calculate_recipe_nutrition(self, generated_text: str) -> dict:
         """Parse ingredients from generated recipe and calculate nutrition scaled by percentage."""
-        ingredient_data = self.parse_ingredients(generated_text)
+        if IngredientMatcher is None or NutritionCalculator is None:
+            logger.warning("Nutrition modules not available")
+            return {}
 
+        ingredient_data = self.parse_ingredients(generated_text)
         if not ingredient_data:
             return {}
-        
-        try:
-            from pathlib import Path
-            import importlib.util
-            
-            project_root = Path(__file__).parent.parent
-            nutrition_path = project_root / "nutrition"
-            
-            spec = importlib.util.spec_from_file_location("ingredient_lookup", 
-                          nutrition_path / "ingredient_lookup.py")
-            ik = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(ik)
-            
-            spec2 = importlib.util.spec_from_file_location("nutrition_calculator",
-                          nutrition_path / "nutrition_calculator.py")
-            nc = importlib.util.module_from_spec(spec2)
-            spec2.loader.exec_module(nc)
-            
-            # Get nutrition calculator
-            calc = nc.NutritionCalculator()
-            
-            # Calculate scaled nutrition for each ingredient
-            scaled_nutrition = {}
-            
-            for ing_name, percentage in ingredient_data:
-                matches = ik.IngredientMatcher().match(ing_name)
-                if not matches:
+
+        calc = NutritionCalculator()
+        matcher = IngredientMatcher()
+        scaled_nutrition: dict = {}
+
+        for ing_name, percentage in ingredient_data:
+            matches = matcher.match(ing_name)
+            if not matches:
+                continue
+
+            # Pick best match: prefer foods with WATER data (critical for hydration)
+            nutrients = None
+            for m in matches:
+                test = calc.get_food_nutrients(m['fdc_id'])
+                if test.get('WATER', {}).get('amount') is not None:
+                    nutrients = test
+                    break
+            if nutrients is None:
+                nutrients = calc.get_food_nutrients(matches[0]['fdc_id'])
+
+            for nut_name, data in nutrients.items():
+                if data['amount'] is None:
                     continue
-                
-                fdc_id = matches[0]['fdc_id']
-                nutrients = calc.get_food_nutrients(fdc_id)
-                
-                for nut_name, data in nutrients.items():
-                    if data['amount'] is None:
-                        continue
-                    
-                    # Scale by percentage (already decimal from normalization)
-                    scaled_value = data['amount'] * percentage
-                    
-                    if nut_name not in scaled_nutrition:
-                        scaled_nutrition[nut_name] = {'unit': data['unit'], 'amount': 0}
-                    
-                    scaled_nutrition[nut_name]['amount'] += scaled_value
-            
-            # Get summary with mapped nutrients
-            return calc.get_summary(scaled_nutrition)
-            
-        except Exception as e:
-            import traceback
-            print(f"[Nutrition Error: {e}]")
-            traceback.print_exc()
-            return {}
+                scaled_value = data['amount'] * percentage
+                if nut_name not in scaled_nutrition:
+                    scaled_nutrition[nut_name] = {'unit': data['unit'], 'amount': 0.0}
+                scaled_nutrition[nut_name]['amount'] += scaled_value
+
+        return calc.get_summary(scaled_nutrition)

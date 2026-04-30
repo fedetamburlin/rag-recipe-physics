@@ -12,7 +12,7 @@ retrieval:
 
 llm:
   model: "qwen2.5:3b"
-  generation_model: "qwen2.5:3b"
+  generation_model: "gemma2:9b"
   temperature: 0.1
   num_ctx: 8192
   num_predict: 1024

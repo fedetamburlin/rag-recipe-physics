@@ -63,7 +63,7 @@ class RecipeFeatureExtractor:
         water = 0.0
 
         flour_keywords = ["flour", "farina", "semola", "manitoba"]
-        water_keywords = ["water", "acqua", "milk", "latte", "yogurt", "buttermilk", "cream"]
+        water_keywords = ["water", "acqua", "milk", "latte", "yogurt", "buttermilk", "cream", "egg", "butter"]
 
         for name, pct in ingredients:
             name_lower = name.lower()
@@ -130,7 +130,7 @@ class RecipeFeatureExtractor:
         taxonomy: str,
         category: str = "batter_baked",
     ) -> dict:
-        """Extract 10 core features from recipe ingredients and nutrition.
+        """Extract 11 physicochemical features from recipe ingredients and nutrition.
 
         Args:
             ingredients: List of (name, percentage_decimal) tuples.
@@ -139,9 +139,10 @@ class RecipeFeatureExtractor:
                        Example: {"WATER": {"amount": 35.0, "unit": "g"}, ...}
             taxonomy: Taxonomy string from retriever.
                       One of: leavened, whipped, doughs, preserves, creams, meats, seafood, other
+            category: Physical family from classifier.
 
         Returns:
-            Dict with 10 feature values keyed by feature name.
+            Dict with 11 feature values keyed by feature name.
         """
         features = {}
 
@@ -156,7 +157,7 @@ class RecipeFeatureExtractor:
         # 7: Baker's hydration (water / flour * 100)
         base = self._analyze_base_ingredients(ingredients)
         if base["flour_pct"] > 0:
-            features["hydration_bakers"] = (base["water_pct"] / base["flour_pct"]) * 100
+            features["hydration_bakers"] = round((base["water_pct"] / base["flour_pct"]) * 100, 1)
         else:
             features["hydration_bakers"] = 0.0
 
@@ -165,16 +166,14 @@ class RecipeFeatureExtractor:
         features["density_kg_m3"] = round(density, 1)
         features["thermal_diffusivity"] = round(alpha, 4)
 
-        # 10: Taxonomy encoding
+        # 10-11: Encodings
         features["taxonomy_encoded"] = TAXONOMY_MAP.get(taxonomy, TAXONOMY_MAP["other"])
-
-        # 11: Physical family category
         features["category_encoded"] = CATEGORY_MAP.get(category, CATEGORY_MAP["batter_baked"])
 
         return features
 
     def get_feature_names(self) -> List[str]:
-        """Return list of 10 feature names."""
+        """Return list of 11 feature names."""
         return self.feature_names.copy()
 
     def get_target_names(self) -> List[str]:

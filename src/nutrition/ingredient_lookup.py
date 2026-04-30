@@ -11,12 +11,15 @@ MIN_SCORE = 0.3
 
 # Priority list: preferred matches for common ingredients (flexible matching)
 INGREDIENT_PRIORITY = {
-    'egg': ['egg, whole', 'eggs, whole', 'egg whole', 'eggs'],
+    'egg': ['egg whole', 'eggs, whole', 'egg, whole', 'eggs'],
+    'eggs': ['egg whole', 'eggs, whole', 'egg, whole', 'eggs'],
     'sugar': ['sugars, granulated', 'sugars, brown', 'sugars, powdered'],
+    'brown sugar': ['sugars, brown'],
     'milk': ['milk, whole', 'milk, 2%', 'milk, 1%', 'milk, skim'],
     'butter': ['butter, salted', 'butter, unsalted'],
     'flour': ['flour, all-purpose', 'flour, white', 'flour, whole wheat', 'flour, 00'],
     'chocolate': ['chocolate, dark', 'chocolate, semisweet', 'cocoa powder'],
+    'cocoa powder': ['cocoa, dry powder, unsweetened', 'cocoa powder'],
     'cream': ['cream, heavy', 'cream, whipping', 'cream, half and half'],
     'cheese': ['cheese, cheddar', 'cheese, mozzarella', 'cheese, parmesan'],
     'oil': ['olive oil', 'oil, olive', 'oil, vegetable', 'oil, canola'],
@@ -30,6 +33,7 @@ INGREDIENT_PRIORITY = {
     'ginger': ['Spices, ginger, ground'],
     'coffee': ['Beverages, coffee, brewed, espresso', 'Beverages, coffee, brewed, breakfast blend', 'Coffee'],
     'vanilla': ['Vanilla extract'],
+    'vanilla extract': ['vanilla extract'],
     'oregano': ['Spices, oregano, dried'],
     'thyme': ['Spices, thyme, dried'],
     'rosemary': ['Spices, rosemary, dried'],
@@ -57,11 +61,14 @@ INGREDIENT_PRIORITY = {
 
 # Blacklist: patterns to exclude from fallback results
 EXCLUDE_PATTERNS = {
-    'egg': ['eggnog', 'meringue', 'custard', 'mayonnaise', 'quiche'],
+    'egg': ['eggnog', 'meringue', 'custard', 'mayonnaise', 'quiche', 'yolk', 'white'],
+    'eggs': ['eggnog', 'meringue', 'custard', 'mayonnaise', 'quiche', 'yolk', 'white'],
     'milk': ['buttermilk', 'milk chocolate', 'evaporated', 'condensed', 'butter'],
-    'sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial', 'brand', 'store'],
+    'sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial', 'brand', 'store', 'cereal', 'oatmeal'],
+    'brown sugar': ['syrup', 'molasses', 'sorbitol', 'xylitol', 'artificial', 'brand', 'store', 'cereal', 'oatmeal'],
     'butter': ['butterbur', 'butterfly', 'nut', 'seed'],
     'chocolate': ['ice cream', 'candy', 'spread', 'pudding', 'cereal'],
+    'cocoa powder': ['mix', 'beverage', 'drink', 'cereal'],
     'salmon': ['salmonberry', 'salmonberries'],
     'lemon': ['lemon peel', 'lemonade'],
     'rice': ['cracker', 'puff', 'chip'],
@@ -71,6 +78,7 @@ EXCLUDE_PATTERNS = {
     'water': ['melon', 'watercress'],
     'yeast': ['extract', 'spread'],
     'vanilla': ['extract', 'flavor', 'ice cream'],
+    'vanilla extract': ['flavor', 'ice cream'],
     'graham': ['chocolate', 'coated'],
     'coffee': ['soy', 'silk', 'latte', 'cappuccino', 'iced', 'substitute', 'chicory', 'coffeecake', 'cake', 'candy', 'bean', 'liqueur', 'cream'],
     'cinnamon': ['bun', 'cake', 'pie', 'roll', 'bagel', 'toast', 'cereal', 'oatmeal'],

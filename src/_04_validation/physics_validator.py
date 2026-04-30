@@ -14,15 +14,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Validation ranges per category
+# Validation ranges per category.
+# NOTE: salt_pct and yeast_pct are TRUE percentages of total ingredients
+# (0.01 = 1%), NOT baker's percentages. The LLM generates proportions
+# as percentages of the whole recipe.
 VALIDATION_RULES = {
     "dough_structured": {
         "hydration_bakers": {"min": 30, "max": 85, "note": "Stiff bagels 50% to ciabatta 80%"},
         "protein_g": {"min": 4, "max": 15, "note": "Bread needs gluten, cookies lower"},
         "fat_g": {"min": 0, "max": 35, "note": "Lean bread <5%, brioche/croissant up to 35%"},
         "sugar_g": {"min": 0, "max": 25, "note": "Bread <10%, sweet pastry higher"},
-        "salt_bakers": {"min": 1.0, "max": 2.5, "note": "Standard 1.5-2.2%"},
-        "yeast_bakers": {"min": 0.5, "max": 3.0, "note": "Fresh yeast, commercial up to 2%"},
+        "salt_pct": {"min": 1.0, "max": 2.5, "note": "Standard 1.5-2.2%"},
+        "yeast_pct": {"min": 0.5, "max": 3.0, "note": "Fresh yeast, commercial up to 2%"},
         "internal_temp_C": {"min": 88, "max": 99, "note": "Bread done at 88-96°C internal"},
     },
     "batter_baked": {
@@ -30,7 +33,7 @@ VALIDATION_RULES = {
         "protein_g": {"min": 3, "max": 10, "note": "Cakes lower protein than bread"},
         "fat_g": {"min": 5, "max": 30, "note": "Butter cakes 15-25%"},
         "sugar_g": {"min": 5, "max": 40, "note": "Sponge cakes higher, savory lower"},
-        "salt_bakers": {"min": 0.5, "max": 2.0, "note": "Generally <2%"},
+        "salt_pct": {"min": 0.5, "max": 2.0, "note": "Generally <2%"},
         "internal_temp_C": {"min": 88, "max": 99, "note": "Cake done when springy, ~96°C"},
     },
     "solid_roast": {
@@ -38,7 +41,7 @@ VALIDATION_RULES = {
         "protein_g": {"min": 10, "max": 35, "note": "Meat/fish dominant"},
         "fat_g": {"min": 2, "max": 30, "note": "Lean fish 2-8%, fatty meat 15-25%"},
         "sugar_g": {"min": 0, "max": 10, "note": "Glaze/marinade only"},
-        "salt_bakers": {"min": 0.5, "max": 2.0, "note": "Seasoning"},
+        "salt_pct": {"min": 0.5, "max": 2.0, "note": "Seasoning"},
         "internal_temp_C": {"min": 55, "max": 74, "note": "Fish 63°C, beef 63°C, poultry 74°C"},
     },
     "custard_set": {
@@ -46,7 +49,7 @@ VALIDATION_RULES = {
         "protein_g": {"min": 5, "max": 15, "note": "Eggs + cheese"},
         "fat_g": {"min": 5, "max": 25, "note": "Cream cheese, heavy cream"},
         "sugar_g": {"min": 5, "max": 30, "note": "Dessert custards higher"},
-        "salt_bakers": {"min": 0.2, "max": 1.5, "note": "Quiche slightly more"},
+        "salt_pct": {"min": 0.2, "max": 1.5, "note": "Quiche slightly more"},
         "internal_temp_C": {"min": 71, "max": 85, "note": "Coagulation starts 65°C, max 85°C to avoid curdling"},
     },
 }
@@ -64,6 +67,15 @@ FDA_INTERNAL_TEMPS = {
 }
 
 
+def _extract_ingredient_pct(ingredients: List[Tuple[str, float]]) -> Dict[str, float]:
+    """Aggregate percentages for key ingredient groups."""
+    ing_dict: Dict[str, float] = {}
+    for name, pct in ingredients:
+        key = name.lower()
+        ing_dict[key] = ing_dict.get(key, 0.0) + pct
+    return ing_dict
+
+
 def validate_recipe(
     ingredients: List[Tuple[str, float]],
     nutrition: dict,
@@ -76,7 +88,7 @@ def validate_recipe(
         ingredients: List of (name, percentage_decimal)
         nutrition: Dict with USDA nutrients per 100g
         category: One of dough_structured, batter_baked, solid_roast, custard_set
-        title: Recipe title
+        title: Recipe title (unused, reserved for future heuristics)
 
     Returns:
         Dict with validation results
@@ -89,88 +101,37 @@ def validate_recipe(
     warnings = []
     errors = []
 
-    # Extract features from ingredients
-    ing_dict = {name.lower(): pct for name, pct in ingredients}
-    flour = sum(v for k, v in ing_dict.items() if "flour" in k or "farina" in k)
-    water = sum(v for k, v in ing_dict.items() if any(x in k for x in ["water", "acqua", "milk", "latte"]))
-    salt = sum(v for k, v in ing_dict.items() if "salt" in k or "sale" in k)
-    yeast = sum(v for k, v in ing_dict.items() if "yeast" in k or "lievito" in k)
+    ing = _extract_ingredient_pct(ingredients)
+
+    # Aggregate groups
+    flour = sum(v for k, v in ing.items() if "flour" in k or "farina" in k)
+    water = sum(v for k, v in ing.items() if any(x in k for x in ["water", "acqua", "milk", "latte", "egg", "butter"]))
+    salt = sum(v for k, v in ing.items() if "salt" in k or "sale" in k)
+    yeast = sum(v for k, v in ing.items() if "yeast" in k or "lievito" in k)
+
     sugar = nutrition.get("SUGAR", {}).get("amount", 0) or 0
+    protein = nutrition.get("PROTEIN", {}).get("amount", 0) or 0
+    fat = nutrition.get("FAT", {}).get("amount", 0) or 0
 
     # 1. Hydration (baker's %)
-    if flour > 0:
-        hydration = (water / flour) * 100
-    else:
-        hydration = 0
-
-    h_rule = rules.get("hydration_bakers")
-    if h_rule:
-        if hydration < h_rule["min"]:
-            errors.append(f"hydration {hydration:.1f}% < {h_rule['min']}% ({h_rule['note']})")
-        elif hydration > h_rule["max"]:
-            errors.append(f"hydration {hydration:.1f}% > {h_rule['max']}% ({h_rule['note']})")
-        else:
-            checks.append(f"hydration {hydration:.1f}% OK")
+    hydration = (water / flour * 100) if flour > 0 else 0.0
+    _check_range(hydration, rules.get("hydration_bakers"), "hydration", "%", checks, warnings, errors)
 
     # 2. Protein
-    protein = nutrition.get("PROTEIN", {}).get("amount", 0) or 0
-    p_rule = rules.get("protein_g")
-    if p_rule:
-        if protein < p_rule["min"]:
-            warnings.append(f"protein {protein:.1f}g < {p_rule['min']}g ({p_rule['note']})")
-        elif protein > p_rule["max"]:
-            warnings.append(f"protein {protein:.1f}g > {p_rule['max']}g ({p_rule['note']})")
-        else:
-            checks.append(f"protein {protein:.1f}g OK")
+    _check_range(protein, rules.get("protein_g"), "protein", "g", checks, warnings, errors)
 
     # 3. Fat
-    fat = nutrition.get("FAT", {}).get("amount", 0) or 0
-    f_rule = rules.get("fat_g")
-    if f_rule:
-        if fat < f_rule["min"]:
-            warnings.append(f"fat {fat:.1f}g < {f_rule['min']}g ({f_rule['note']})")
-        elif fat > f_rule["max"]:
-            warnings.append(f"fat {fat:.1f}g > {f_rule['max']}g ({f_rule['note']})")
-        else:
-            checks.append(f"fat {fat:.1f}g OK")
+    _check_range(fat, rules.get("fat_g"), "fat", "g", checks, warnings, errors)
 
     # 4. Sugar
-    s_rule = rules.get("sugar_g")
-    if s_rule:
-        if sugar < s_rule["min"]:
-            warnings.append(f"sugar {sugar:.1f}g < {s_rule['min']}g ({s_rule['note']})")
-        elif sugar > s_rule["max"]:
-            warnings.append(f"sugar {sugar:.1f}g > {s_rule['max']}g ({s_rule['note']})")
-        else:
-            checks.append(f"sugar {sugar:.1f}g OK")
+    _check_range(sugar, rules.get("sugar_g"), "sugar", "g", checks, warnings, errors)
 
-    # Pre-calculate baker's percentages
-    if flour > 0:
-        salt_bakers = (salt / flour) * 100
-        yeast_bakers = (yeast / flour) * 100
-    else:
-        salt_bakers = 0
-        yeast_bakers = 0
+    # 5. Salt (true % of total ingredients)
+    _check_range(salt * 100, rules.get("salt_pct"), "salt", "%", checks, warnings, errors)
 
-    # 5. Salt (baker's %)
-    salt_rule = rules.get("salt_bakers")
-    if salt_rule:
-        if salt_bakers < salt_rule["min"]:
-            warnings.append(f"salt {salt_bakers:.1f}% < {salt_rule['min']}% ({salt_rule['note']})")
-        elif salt_bakers > salt_rule["max"]:
-            errors.append(f"salt {salt_bakers:.1f}% > {salt_rule['max']}% ({salt_rule['note']})")
-        else:
-            checks.append(f"salt {salt_bakers:.1f}% OK")
-
-    # 6. Yeast (baker's %, dough only)
-    yeast_rule = rules.get("yeast_bakers")
-    if yeast_rule and flour > 0 and yeast_bakers > 0:
-        if yeast_bakers < yeast_rule["min"]:
-            warnings.append(f"yeast {yeast_bakers:.1f}% < {yeast_rule['min']}% ({yeast_rule['note']})")
-        elif yeast_bakers > yeast_rule["max"]:
-            warnings.append(f"yeast {yeast_bakers:.1f}% > {yeast_rule['max']}% ({yeast_rule['note']})")
-        else:
-            checks.append(f"yeast {yeast_bakers:.1f}% OK")
+    # 6. Yeast (true %, dough only)
+    if yeast > 0:
+        _check_range(yeast * 100, rules.get("yeast_pct"), "yeast", "%", checks, warnings, errors)
 
     # 7. Internal temperature guidance (informational)
     temp_rule = rules.get("internal_temp_C")
@@ -196,10 +157,32 @@ def validate_recipe(
             "protein_g": round(protein, 1),
             "fat_g": round(fat, 1),
             "sugar_g": round(sugar, 1),
-            "salt_bakers": round(salt_bakers, 2),
-            "yeast_bakers": round(yeast_bakers, 2) if flour > 0 else 0,
+            "salt_pct": round(salt * 100, 2),
+            "yeast_pct": round(yeast * 100, 2),
         }
     }
+
+
+def _check_range(
+    value: float,
+    rule: dict,
+    name: str,
+    unit: str,
+    checks: List[str],
+    warnings: List[str],
+    errors: List[str],
+) -> None:
+    """Check a numeric value against a min/max rule."""
+    if rule is None:
+        return
+
+    msg = rule["note"]
+    if value < rule["min"]:
+        errors.append(f"{name} {value:.1f}{unit} < {rule['min']}{unit} ({msg})")
+    elif value > rule["max"]:
+        errors.append(f"{name} {value:.1f}{unit} > {rule['max']}{unit} ({msg})")
+    else:
+        checks.append(f"{name} {value:.1f}{unit} OK")
 
 
 def get_fda_temp(food_type: str) -> int:
