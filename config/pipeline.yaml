@@ -19,7 +19,7 @@ llm:
   num_thread: 4
 
 rag:
-  dataset_size: 500
+  dataset_size: 20000
   cache_dir: "cache/rag"
   dataset_name: "nuhuibrahim/recifine"
 

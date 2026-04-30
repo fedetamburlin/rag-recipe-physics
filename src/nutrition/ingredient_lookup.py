@@ -22,13 +22,26 @@ INGREDIENT_PRIORITY = {
     'oil': ['olive oil', 'oil, olive', 'oil, vegetable', 'oil, canola'],
     'salt': ['salt, table', 'salt, sea'],
     'honey': ['honey, raw', 'honey, clover'],
-    # New additions
+    # Spices and flavorings
+    'cinnamon': ['Spices, cinnamon, ground'],
+    'nutmeg': ['Spices, nutmeg, ground'],
+    'clove': ['Spices, cloves, ground'],
+    'pepper': ['Spices, pepper, black'],
+    'ginger': ['Spices, ginger, ground'],
+    'coffee': ['Beverages, coffee, brewed, espresso', 'Beverages, coffee, brewed, breakfast blend', 'Coffee'],
+    'vanilla': ['Vanilla extract'],
+    'oregano': ['Spices, oregano, dried'],
+    'thyme': ['Spices, thyme, dried'],
+    'rosemary': ['Spices, rosemary, dried'],
+    'sage': ['Spices, sage, ground'],
+    'basil': ['Basil, fresh', 'Spices, basil, dried'],
+    # Vegetables
     'garlic': ['garlic, raw'],
     'onion': ['onions, raw'],
     'carrot': ['carrots, raw'],
     'celery': ['celery, raw'],
     'tomato': ['tomato, red', 'tomatoes, raw'],
-    'basil': ['basil, fresh'],
+    # Proteins
     'pasta': ['pasta, dry', 'pasta, enriched'],
     'chicken': ['chicken breast', 'chicken, breast'],
     'chicken breast': ['chicken breast'],
@@ -38,7 +51,6 @@ INGREDIENT_PRIORITY = {
     'potato': ['potato, raw', 'potatoes, raw'],
     'beef': ['beef, ground', 'beef, raw'],
     'onions': ['onions, raw'],
-    'garlic': ['garlic, raw'],
     'peas': ['peas, green'],
     'soy sauce': ['soy sauce'],
 }
@@ -60,6 +72,9 @@ EXCLUDE_PATTERNS = {
     'yeast': ['extract', 'spread'],
     'vanilla': ['extract', 'flavor', 'ice cream'],
     'graham': ['chocolate', 'coated'],
+    'coffee': ['soy', 'silk', 'latte', 'cappuccino', 'iced', 'substitute', 'chicory', 'coffeecake', 'cake', 'candy', 'bean', 'liqueur', 'cream'],
+    'cinnamon': ['bun', 'cake', 'pie', 'roll', 'bagel', 'toast', 'cereal', 'oatmeal'],
+    'nutmeg': ['ice cream', 'pie', 'cake', 'bun', 'custard'],
 }
 
 
@@ -134,16 +149,26 @@ class IngredientMatcher:
             SELECT fdc_id, description, data_type
             FROM foods
             WHERE {' OR '.join(conditions)}
-            ORDER BY LENGTH(description)
-            LIMIT 5
+            ORDER BY 
+                CASE WHEN LOWER(description) LIKE '%beverages, coffee%' THEN 0
+                     WHEN LOWER(description) LIKE '%coffee, brewed%' THEN 1
+                     ELSE 2
+                END,
+                LENGTH(description)
+            LIMIT 10
         """
         
         cursor.execute(query, params)
         results = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # Filter out brand-specific results
+        # Filter out brand-specific results and blacklist patterns
         filtered = [r for r in results if 'brand' not in r['description'].lower()]
+        
+        # Apply ingredient-specific blacklist if exists
+        if ing_lower in EXCLUDE_PATTERNS:
+            exclude_list = EXCLUDE_PATTERNS[ing_lower]
+            filtered = [r for r in filtered if not _matches_exclude(r['description'], exclude_list)]
         
         return filtered[:self.top_k] if filtered else results[:self.top_k]
     

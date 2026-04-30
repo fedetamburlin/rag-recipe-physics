@@ -7,6 +7,16 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+# Suppress verbose HTTP, model loading and warnings
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("huggingface_hub.utils._http").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +82,7 @@ def main():
             
             print("\n[Nutrition per 100g]")
             nutrition = retriever.calculate_recipe_nutrition(result)
-            for k in ['Energy', 'Protein', 'Carbohydrates', 'Fat', 'Fiber', 'Sodium']:
+            for k in ['ENERGY', 'PROTEIN', 'CARB', 'FAT', 'FIBER', 'NA']:
                 if k in nutrition:
                     unit = nutrition[k].get('unit', 'g')
                     print(f"  {k}: {nutrition[k]['amount']} {unit}")
@@ -161,7 +171,7 @@ if __name__ == "__main__":
                 print("\n[Nutrition per 100g]")
                 try:
                     nutrition = retriever.calculate_recipe_nutrition(result)
-                    for k in ['Energy', 'Protein', 'Carbohydrates', 'Fat', 'Fiber', 'Sodium']:
+                    for k in ['ENERGY', 'PROTEIN', 'CARB', 'FAT', 'FIBER', 'NA']:
                         if k in nutrition:
                             print(f"  {k}: {nutrition[k]['amount']} {nutrition[k]['unit']}")
                 except Exception as e:

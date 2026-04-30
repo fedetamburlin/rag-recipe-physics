@@ -281,17 +281,38 @@ class RAGRetriever:
         text = generated_text.replace('\n', ' ').replace('**', '')
         text = re.sub(r'TITLE:.*', '', text, flags=re.I)
         
+        # Conversion rates for volume units (conservative estimates)
+        UNIT_CONVERSION = {'tbsp': 8, 'tablespoon': 8, 'cup': 20, 'tsp': 3, 'teaspoon': 3}
+
         # Find all patterns like "ingredient 30%" or "30% ingredient" or "ingredient - 30%"
         # Pattern 1: "name XX%"
         matches1 = re.findall(r'([a-zA-Z\s\-]+?)\s+(\d+)%', text)
         # Pattern 2: "XX% name"
         matches2 = re.findall(r'(\d+)%\s+([a-zA-Z\s\-]+?)(?:\s|$|,|\.)', text)
-        
+
+        # Pattern 3: "X tbsp/tablespoon ingredient"
+        matches_tbsp = re.findall(r'(\d+)\s*(?:tbsp|tablespoon)s?\s+([a-zA-Z\s\-]+?)(?:\s|$|,|\.)', text, re.I)
+        # Pattern 4: "X cup/cups ingredient"
+        matches_cup = re.findall(r'(\d+)\s*(?:cups?)\s+([a-zA-Z\s\-]+?)(?:\s|$|,|\.)', text, re.I)
+        # Pattern 5: "X tsp/teaspoon ingredient"
+        matches_tsp = re.findall(r'(\d+)\s*(?:tsp|teaspoon)s?\s+([a-zA-Z\s\-]+?)(?:\s|$|,|\.)', text, re.I)
+
         all_matches = []
         for name, pct in matches1:
             all_matches.append((name.strip(), int(pct)))
         for pct, name in matches2:
             all_matches.append((name.strip(), int(pct)))
+
+        # Convert volume units to percentages
+        for num, name in matches_tbsp:
+            pct = int(num) * UNIT_CONVERSION['tbsp']
+            all_matches.append((name.strip(), pct))
+        for num, name in matches_cup:
+            pct = int(num) * UNIT_CONVERSION['cup']
+            all_matches.append((name.strip(), pct))
+        for num, name in matches_tsp:
+            pct = int(num) * UNIT_CONVERSION['tsp']
+            all_matches.append((name.strip(), pct))
         
         # Clip salt to max 1%
         salt_adjustment = 0
@@ -303,24 +324,19 @@ class RAGRetriever:
             if pct > 0 and len(name) > 2:
                 normalized.append((name.lower(), pct))
         
-        # Redistribute excess from salt if any
-        if salt_adjustment > 0 and len(normalized) > 1:
-            excess = salt_adjustment / 100.0
-            redistribute = excess / (len(normalized) - 1)
-            new_data = []
-            for name, pct in normalized:
-                if 'salt' not in name:
-                    new_data.append((name, pct/100.0 + redistribute))
-                else:
-                    new_data.append((name, pct/100.0))
-            normalized = new_data
-        else:
-            normalized = [(n, p/100.0) for n, p in normalized]
+        # Convert all to decimal (0-1 range)
+        normalized = [(n, p/100.0) for n, p in normalized]
+        
+        # Normalize to 100% (sum to 1.0)
+        total = sum(p for _, p in normalized)
+        if total > 0 and abs(total - 1.0) > 0.01:
+            scale = 1.0 / total
+            normalized = [(n, p * scale) for n, p in normalized]
+            total_pct = total * 100
+            if total_pct < 50 or total_pct > 150:
+                print(f"[Warning: Ingredients total {int(total_pct)}%, scaled to 100%]")
         
         ingredient_data = normalized
-        
-        if not ingredient_data:
-            return {}
         
         if not ingredient_data:
             return {}
@@ -360,7 +376,7 @@ class RAGRetriever:
                     if data['amount'] is None:
                         continue
                     
-                    # Scale by percentage
+                    # Scale by percentage (already decimal from normalization)
                     scaled_value = data['amount'] * percentage
                     
                     if nut_name not in scaled_nutrition:
