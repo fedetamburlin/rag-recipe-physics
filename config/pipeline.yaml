@@ -20,7 +20,7 @@ llm:
 
 rag:
   dataset_size: 20000
-  cache_dir: "cache/rag"
+  cache_dir: "../cache/rag"
   dataset_name: "nuhuibrahim/recifine"
 
 query_parser:

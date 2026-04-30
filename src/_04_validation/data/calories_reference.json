@@ -1,0 +1,53 @@
+{
+  "kcal_per_100g": {
+    "bread": {
+      "white": {"min": 250, "max": 280, "typical": 266},
+      "whole_wheat": {"min": 240, "max": 270, "typical": 256},
+      "french": {"min": 260, "max": 290, "typical": 274},
+      "brioche": {"min": 320, "max": 380, "typical": 350}
+    },
+    "butter_cake": {
+      "chocolate": {"min": 350, "max": 420, "typical": 391},
+      "vanilla": {"min": 300, "max": 350, "typical": 317},
+      "cheesecake": {"min": 340, "max": 400, "typical": 367},
+      "pound_cake": {"min": 340, "max": 380, "typical": 356},
+      "red_velvet": {"min": 360, "max": 410, "typical": 389},
+      "carrot": {"min": 350, "max": 400, "typical": 372}
+    },
+    "foam_cake": {
+      "sponge": {"min": 280, "max": 330, "typical": 299},
+      "angel_food": {"min": 140, "max": 180, "typical": 156},
+      "meringue": {"min": 400, "max": 450, "typical": 420}
+    },
+    "pastry_puff": {
+      "croissant": {"min": 400, "max": 480, "typical": 440},
+      "millefeuille": {"min": 450, "max": 520, "typical": 500},
+      "puff_pastry": {"min": 480, "max": 550, "typical": 506}
+    },
+    "pastry_shortcrust": {
+      "pie_crust": {"min": 450, "max": 550, "typical": 506},
+      "tart": {"min": 300, "max": 400, "typical": 350},
+      "quiche": {"min": 280, "max": 380, "typical": 334}
+    },
+    "cookies": {
+      "chocolate_chip": {"min": 450, "max": 520, "typical": 488},
+      "oatmeal": {"min": 400, "max": 480, "typical": 440},
+      "shortbread": {"min": 450, "max": 520, "typical": 480},
+      "macarons": {"min": 350, "max": 420, "typical": 380}
+    },
+    "savory_pie": {
+      "shepherds_pie": {"min": 130, "max": 280, "typical": 200},
+      "cottage_pie": {"min": 180, "max": 260, "typical": 220},
+      "meat_pie": {"min": 250, "max": 350, "typical": 300},
+      "empanada": {"min": 300, "max": 420, "typical": 360}
+    },
+    "seafood_baked": {
+      "fish_pie": {"min": 280, "max": 380, "typical": 330},
+      "salmon_en_croute": {"min": 300, "max": 450, "typical": 380}
+    },
+    "pizza": {
+      "thin": {"min": 250, "max": 300, "typical": 266},
+      "thick": {"min": 280, "max": 350, "typical": 310}
+    }
+  }
+}

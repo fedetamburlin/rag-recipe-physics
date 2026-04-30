@@ -1,0 +1,48 @@
+{
+  "weight_loss_percent": {
+    "description": "Typical weight loss during baking (dough → baked product)",
+    "bread": {
+      "small": {"min": 15, "max": 20, "note": "<200g loaves"},
+      "medium": {"min": 10, "max": 15, "note": "200-500g loaves"},
+      "large": {"min": 8, "max": 12, "note": ">500g loaves"}
+    },
+    "butter_cake": {
+      "standard": {"min": 10, "max": 15, "note": "900g cake"}
+    },
+    "foam_cake": {
+      "standard": {"min": 15, "max": 22, "note": "high moisture"}
+    },
+    "pastry_puff": {
+      "croissant": {"min": 12, "max": 18},
+      "millefeuille": {"min": 10, "max": 15}
+    },
+    "cookies": {
+      "drop": {"min": 5, "max": 10},
+      "rolled": {"min": 8, "max": 12}
+    },
+    "savory_pie": {
+      "standard": {"min": 8, "max": 12}
+    },
+    "seafood_baked": {
+      "standard": {"min": 10, "max": 15}
+    }
+  },
+  "physics_model": {
+    "description": "Simplified physics-based moisture estimation",
+    "formula": "weight_loss = initial_weight × moisture_fraction × (1 - final_moisture_ratio)",
+    "parameters": {
+      "dough_moisture_fraction": {
+        "bread": 0.55,
+        "cake": 0.35,
+        "pastry": 0.30,
+        "cookies": 0.20
+      },
+      "baked_product_moisture": {
+        "bread": 0.35,
+        "cake": 0.25,
+        "pastry": 0.15,
+        "cookies": 0.05
+      }
+    }
+  }
+}

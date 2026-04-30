@@ -11,7 +11,8 @@ class NutritionCalculator:
     # Standard nutrients to include in summary output
     SUMMARY_CODES = [
         'ENERGY', 'PROTEIN', 'CARB', 'FAT', 'FIBER', 'SUGAR',
-        'CHOLESTEROL', 'NA', 'K', 'CA', 'FE', 'VITC'
+        'CHOLESTEROL', 'NA', 'K', 'CA', 'FE', 'VITC',
+        'WATER'  # needed for physics-based feature extraction
     ]
 
     def __init__(self):

@@ -19,6 +19,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 logger = logging.getLogger(__name__)
 
+from _03_feature_extraction.feature_extractor import RecipeFeatureExtractor
+
 
 def main():
     parser = argparse.ArgumentParser(description="RAG Recipe Pipeline")
@@ -28,8 +30,8 @@ def main():
     parser.add_argument("--skip-generation", action="store_true", help="Only retrieval, no generation")
     args = parser.parse_args()
     
-    from parser.query_analyzer import QueryAnalyzer
-    from rag.retriever import RAGRetriever
+    from _01_parser.query_analyzer import QueryAnalyzer
+    from _02_rag.retriever import RAGRetriever
     
     print("\n" + "="*60)
     print("Initializing Query Analyzer...")
@@ -105,14 +107,14 @@ if __name__ == "__main__":
     parser.add_argument("--test", action="store_true", help="Run 20 test cases")
     args = parser.parse_args()
     
-    from parser.query_analyzer import QueryAnalyzer
+    from _01_parser.query_analyzer import QueryAnalyzer
     
     if args.test:
         analyzer = QueryAnalyzer(config_path=args.config)
         run_tests(analyzer)
         sys.exit(0)
     
-    from rag.retriever import RAGRetriever
+    from _02_rag.retriever import RAGRetriever
     
     print("\n" + "="*60)
     print("Initializing Query Analyzer...")
@@ -174,8 +176,16 @@ if __name__ == "__main__":
                     for k in ['ENERGY', 'PROTEIN', 'CARB', 'FAT', 'FIBER', 'NA']:
                         if k in nutrition:
                             print(f"  {k}: {nutrition[k]['amount']} {nutrition[k]['unit']}")
+                    
+                    # Extract physicochemical features for oven prediction
+                    ingredients = retriever.parse_ingredients(result)
+                    extractor = RecipeFeatureExtractor()
+                    features = extractor.extract(ingredients, nutrition, taxonomy)
+                    print("\n[Features for oven prediction]")
+                    for k, v in features.items():
+                        print(f"  {k}: {v}")
                 except Exception as e:
-                    print(f"[Error in nutrition: {e}]")
+                    print(f"[Error in nutrition/features: {e}]")
         
         print("\n" + "="*60)
         

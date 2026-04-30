@@ -1,0 +1,42 @@
+{
+  "taxonomy_map": {
+    "bread": ["white bread", "whole wheat", "sourdough", "brioche", "ciabatta", "baguette", "focaccia"],
+    "butter_cake": ["chocolate cake", "vanilla cake", "pound cake", "red velvet", "carrot cake", "cheesecake"],
+    "foam_cake": ["sponge cake", "angel food", "meringue", "ladyfingers"],
+    "pastry_puff": ["croissant", "pain au chocolat", "millefeuille", "danish", "puff pastry"],
+    "pastry_shortcrust": ["pie", "tart", "quiche", "galette", "tartelette"],
+    "pastry_choux": ["eclair", "profiteroles", "cream puff", "chouquette", " Religieuses"],
+    "cookies": ["chocolate chip", "oatmeal", "sugar", "shortbread", "macarons", "biscotti"],
+    "savory_pie": ["shepherd's pie", "cottage pie", "beef pie", "meat pie", "empanada"],
+    "seafood_baked": ["fish pie", "salmon en croute", "tuna pie", "seafood tart"],
+    "pizza": ["pizza", "calzone", "flatbread"]
+  },
+  "bakers_percent": {
+    "bread": {
+      "flour": 100,
+      "water": {"min": 55, "max": 75},
+      "salt": {"min": 1.5, "max": 2.5},
+      "yeast": {"min": 0.5, "max": 2},
+      "sugar": {"min": 0, "max": 10},
+      "fat": {"min": 0, "max": 5}
+    },
+    "butter_cake": {
+      "flour": 100,
+      "sugar": {"min": 80, "max": 120},
+      "butter": {"min": 50, "max": 100},
+      "eggs": {"min": 50, "max": 100},
+      "milk": {"min": 20, "max": 50}
+    },
+    "pastry_puff": {
+      "flour": 100,
+      "butter": {"min": 50, "max": 80},
+      "water": {"min": 50, "max": 65}
+    },
+    "cookies": {
+      "flour": 100,
+      "sugar": {"min": 60, "max": 100},
+      "butter": {"min": 60, "max": 100},
+      "eggs": {"min": 20, "max": 40}
+    }
+  }
+}

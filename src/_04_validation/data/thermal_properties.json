@@ -1,0 +1,54 @@
+{
+  "thermal_properties": {
+    "description": "Thermophysical properties for baking simulation",
+    "units": {
+      "cp": "J/(kg·K)",
+      "k": "W/(m·K)",
+      "alpha": "m²/s"
+    },
+    "dough_batter": {
+      "bread_dough": {
+        "cp": {"min": 2000, "max": 2800},
+        "k": {"min": 0.3, "max": 0.5},
+        "density": {"min": 800, "max": 1100}
+      },
+      "cake_batter": {
+        "cp": {"min": 2500, "max": 2700},
+        "k": {"min": 0.15, "max": 0.25},
+        "density": {"min": 600, "max": 900}
+      },
+      "cookie_dough": {
+        "cp": {"min": 1800, "max": 2200},
+        "k": {"min": 0.15, "max": 0.22},
+        "density": {"min": 700, "max": 1000}
+      }
+    },
+    "baked_product": {
+      "bread_crumb": {
+        "cp": {"min": 1500, "max": 2000},
+        "k": {"min": 0.08, "max": 0.15}
+      },
+      "cake_crumb": {
+        "cp": {"min": 1400, "max": 1800},
+        "k": {"min": 0.10, "max": 0.18}
+      },
+      "cookie": {
+        "cp": {"min": 1300, "max": 1600},
+        "k": {"min": 0.08, "max": 0.14}
+      }
+    },
+    "phase_transitions": {
+      "starch_gelatinization": {
+        "temperature_range": {"min": 60, "max": 80, "unit": "°C"},
+        "enthalpy": {"min": 10, "max": 20, "unit": "J/g", "note": "wheat starch DSC"}
+      },
+      "protein_denaturation": {
+        "temperature_range": {"min": 60, "max": 90, "unit": "°C"}
+      },
+      "water_evaporation": {
+        "temperature": 100,
+        "enthalpy": {"value": 2260, "unit": "kJ/kg"}
+      }
+    }
+  }
+}

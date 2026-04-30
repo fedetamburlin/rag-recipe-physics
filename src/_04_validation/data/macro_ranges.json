@@ -1,0 +1,44 @@
+{
+  "macro_percentages": {
+    "bread": {
+      "protein": {"min": 8, "max": 14},
+      "carbs": {"min": 45, "max": 55},
+      "fat": {"min": 2, "max": 10}
+    },
+    "butter_cake": {
+      "protein": {"min": 3, "max": 8},
+      "carbs": {"min": 40, "max": 55},
+      "fat": {"min": 20, "max": 35}
+    },
+    "foam_cake": {
+      "protein": {"min": 5, "max": 12},
+      "carbs": {"min": 50, "max": 65},
+      "fat": {"min": 2, "max": 12}
+    },
+    "pastry_puff": {
+      "protein": {"min": 4, "max": 9},
+      "carbs": {"min": 35, "max": 50},
+      "fat": {"min": 30, "max": 45}
+    },
+    "pastry_shortcrust": {
+      "protein": {"min": 4, "max": 10},
+      "carbs": {"min": 40, "max": 55},
+      "fat": {"min": 25, "max": 40}
+    },
+    "cookies": {
+      "protein": {"min": 3, "max": 8},
+      "carbs": {"min": 45, "max": 60},
+      "fat": {"min": 25, "max": 40}
+    },
+    "savory_pie": {
+      "protein": {"min": 8, "max": 20},
+      "carbs": {"min": 20, "max": 40},
+      "fat": {"min": 15, "max": 30}
+    },
+    "seafood_baked": {
+      "protein": {"min": 15, "max": 30},
+      "carbs": {"min": 15, "max": 35},
+      "fat": {"min": 10, "max": 25}
+    }
+  }
+}

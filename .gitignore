@@ -10,3 +10,9 @@ build/
 .eggs/
 re
 sys
+
+# Credentials (never commit)
+.env
+.env.local
+credentials.json
+*.key
